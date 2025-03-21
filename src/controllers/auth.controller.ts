@@ -120,3 +120,25 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ message: 'Logout failed' });
   }
 };
+
+export const checkAuth = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({ message: 'Not authenticated' });
+    return;
+  }
+
+  try {
+    const result = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.user.userId]);
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    const user = result.rows[0];
+    res.json({ user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to fetch user data' });
+  }
+};
