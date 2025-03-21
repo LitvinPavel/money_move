@@ -29,11 +29,6 @@ const deleteRefreshToken = async (token: string): Promise<void> => {
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { username, password } = req.body;
 
-  if (!username || !password) {
-    res.status(400).json({ message: 'Username and password are required' });
-    return;
-  }
-
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
@@ -49,11 +44,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { username, password } = req.body;
-
-  if (!username || !password) {
-    res.status(400).json({ message: 'Username and password are required' });
-    return;
-  }
 
   try {
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
@@ -91,11 +81,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const refreshToken = async (req: Request, res: Response): Promise<void> => {
   const refreshToken = req.cookies.refreshToken;
 
-  if (!refreshToken) {
-    res.status(400).json({ message: 'Refresh token is required' });
-    return;
-  }
-
   try {
     const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as jwt.JwtPayload;
     const userId = decoded.userId;
@@ -120,11 +105,6 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
   const refreshToken = req.cookies.refreshToken;
-
-  if (!refreshToken) {
-    res.status(400).json({ message: 'Refresh token is required' });
-    return;
-  }
 
   try {
     await deleteRefreshToken(refreshToken);
