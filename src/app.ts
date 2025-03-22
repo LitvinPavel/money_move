@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 
 const corsOptions = {
-  origin: [process.env.CLIENT_URL || 'https://money-move-ui.vercel.app', 'http://localhost:5173/'],
+  origin: [process.env.CLIENT_URL || 'https://money-move-ui.vercel.app', 'http://localhost:5173'],
   credentials: true,
 };
 
