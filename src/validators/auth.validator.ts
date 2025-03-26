@@ -1,19 +1,21 @@
-import Joi from 'joi';
+import Joi from "joi";
 
-export const registerSchema = Joi.object({
-  username: Joi.string().min(3).max(30).required(),
-  password: Joi.string().min(6).required(),
+export const authSchema = Joi.object({
+  name: Joi.string().min(2).max(50).when("$isRegister", {
+    is: true,
+    then: Joi.required(),
+  }),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required(),
+  confirmPassword: Joi.string().valid(Joi.ref("password")).when("$isRegister", {
+    is: true,
+    then: Joi.required(),
+  }),
 });
 
-export const loginSchema = Joi.object({
-  username: Joi.string().min(3).max(30).required(),
-  password: Joi.string().min(6).required(),
-});
-
-export const refreshTokenSchema = Joi.object({
-  refreshToken: Joi.string().required(),
-});
-
-export const logoutSchema = Joi.object({
-  refreshToken: Joi.string().required(),
-});
+export const validateRequest = (data: any, isRegister = false) => {
+  return authSchema.validate(data, {
+    abortEarly: false,
+    context: { isRegister },
+  });
+};

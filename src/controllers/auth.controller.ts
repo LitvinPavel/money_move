@@ -1,144 +1,101 @@
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import pool from '../config/db';
+import { AuthService } from '../services/auth.service';
+import { setTokenCookies, clearTokenCookies } from '../utils/cookie.utils';
+import { validateRequest } from '../validators/auth.validator';
+import { UserModel } from '../models/user.model';
+import { TokenService } from '../services/token.service';
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'access_secret';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'refresh_secret';
+export class AuthController {
+  static async register(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = validateRequest(req.body);
+      if (error) {
+        res.status(400).json({ 
+          errors: error.details.map(d => ({
+            field: d.path[0],
+            message: d.message
+          }))
+        });
+        return;
+      }
 
-const generateAccessToken = (userId: number): string => {
-  return jwt.sign({ userId }, ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
-};
+      const { user, tokens } = await AuthService.register(value);
+      setTokenCookies(res, tokens);
 
-const generateRefreshToken = (userId: number): string => {
-  return jwt.sign({ userId }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
-};
-
-const saveRefreshToken = async (userId: number, token: string): Promise<void> => {
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 дней
-  await pool.query(
-    'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-    [userId, token, expiresAt]
-  );
-};
-
-const deleteRefreshToken = async (token: string): Promise<void> => {
-  await pool.query('DELETE FROM refresh_tokens WHERE token = $1', [token]);
-};
-
-export const register = async (req: Request, res: Response): Promise<void> => {
-  const { username, password } = req.body;
-
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
-      [username, hashedPassword]
-    );
-    res.status(201).json({ user: result.rows[0] });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Registration failed' });
-  }
-};
-
-export const login = async (req: Request, res: Response): Promise<void> => {
-  const { username, password } = req.body;
-
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    if (result.rows.length === 0) {
-      res.status(401).json({ message: 'Invalid credentials' });
-      return;
+      res.status(201).json({ user });
+    } catch (error) {
+      res.status(400).json({ error: (error as { message: string }).message });
     }
+  }
 
-    const user = result.rows[0];
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+  static async login(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = validateRequest(req.body);
+      if (error) {
+        res.status(400).json({ errors: error.details });
+        return;
+      }
 
-    if (!isPasswordValid) {
-      res.status(401).json({ message: 'Invalid credentials' });
-      return;
+      const { user, tokens } = await AuthService.login(value.email, value.password);
+      setTokenCookies(res, tokens);
+
+      res.json({ user });
+    } catch (error) {
+      res.status(401).json({ error: (error as { message: string }).message });
     }
-
-    const accessToken = generateAccessToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    await saveRefreshToken(user.id, refreshToken);
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // В production используем secure cookies
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 дней
-    });
-
-    res.json({ accessToken });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Login failed' });
   }
-};
 
-export const refreshToken = async (req: Request, res: Response): Promise<void> => {
-  const refreshToken = req.cookies.refreshToken;
+  static async logout(_req: Request, res: Response): Promise<void> {
+    clearTokenCookies(res);
+    res.sendStatus(204);
+  }
 
-  try {
-    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as jwt.JwtPayload;
-    const userId = decoded.userId;
+  static async refreshToken(req: Request, res: Response): Promise<void> {
+    try {
+      const refreshToken = req.cookies.refreshToken;
+      
+      if (!refreshToken) {
+        res.status(401).json({ error: 'Refresh token required' });
+        return;
+      }
 
-    const result = await pool.query('SELECT * FROM refresh_tokens WHERE token = $1 AND user_id = $2', [
-      refreshToken,
-      userId,
-    ]);
-
-    if (result.rows.length === 0) {
-      res.status(403).json({ message: 'Invalid refresh token' });
-      return;
+      // Верифицируем refreshToken
+      const { userId } = TokenService.verifyRefreshToken(refreshToken);
+      
+      // Генерируем новые токены
+      const tokens = TokenService.generateTokens({ userId });
+      
+      // Устанавливаем новые cookies
+      setTokenCookies(res, tokens);
+      
+      res.json({ success: true, userId });
+    } catch (error) {
+      if (TokenService.isTokenExpiredError(error)) {
+        clearTokenCookies(res);
+        res.status(401).json({ error: 'Refresh token expired. Please log in again.' });
+      } else {
+        res.status(403).json({ error: 'Invalid refresh token' });
+      }
     }
-
-    const accessToken = generateAccessToken(userId);
-    res.json({ accessToken });
-  } catch (error) {
-    console.error(error);
-    res.status(403).json({ message: 'Invalid refresh token' });
-  }
-};
-
-export const logout = async (req: Request, res: Response): Promise<void> => {
-  const refreshToken = req.cookies.refreshToken;
-
-  try {
-    await deleteRefreshToken(refreshToken);
-    
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-    });
-
-    res.status(204).send();
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Logout failed' });
-  }
-};
-
-export const checkAuth = async (req: Request, res: Response): Promise<void> => {
-  if (!req.user) {
-    res.status(401).json({ message: 'Not authenticated' });
-    return;
   }
 
-  try {
-    const result = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.user.userId]);
+  static async me(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        res.status(401).json({ error: 'Refresh token required' });
+        return;
+      }
 
-    if (result.rows.length === 0) {
-      res.status(404).json({ message: 'User not found' });
-      return;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      res.json({ user });
+    } catch (error) {
+      res.status(500).json({ error: (error as { message: string }).message });
     }
-
-    const user = result.rows[0];
-    res.json({ user });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch user data' });
   }
-};
+}

@@ -1,25 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { TokenService } from '../services/token.service';
+import { AuthController } from "../controllers/auth.controller";
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'access_secret';
-
-export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({ message: 'Access denied. No token provided.' });
-    return;
-  }
-
-  jwt.verify(token, ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if (err) {
-      console.error('JWT verification error:', err); 
-      res.status(403).json({ message: 'Invalid token' });
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = req.cookies.accessToken;
+    
+    if (!token) {
+      res.status(401).json({ error: 'Authorization token required' });
       return;
     }
-    console.log('Decoded token:', decoded);
-    req.user = decoded as jwt.JwtPayload;
-    next();
-  });
+
+    try {
+      const payload = TokenService.verifyAccessToken(token);
+      req.user = { userId: payload.userId };
+      next();
+    } catch (error) {
+      if (TokenService.isTokenExpiredError(error)) {
+        // Пробуем обновить токен, если он истек
+        AuthController.refreshToken(req, res);
+      }
+      throw error;
+    }
+  } catch (error) {
+    res.status(403).json({ error: 'Invalid token' });
+  }
 };

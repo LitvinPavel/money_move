@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node dist/app.ts",
     "build": "tsc",
-    "dev": "ts-node src/app.ts"
+    "dev": "ts-node src/app.ts --dotenv .env.development"
   },
   "keywords": [],
   "author": "",

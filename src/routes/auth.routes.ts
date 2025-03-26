@@ -1,24 +1,13 @@
-import express from 'express';
-import { register, login, refreshToken, logout, checkAuth } from '../controllers/auth.controller';
-import { authenticateToken } from '../middleware/auth.middleware';
-import { validateRequest } from '../middleware/validateRequest.middleware';
-import {
-    registerSchema,
-    loginSchema,
-    refreshTokenSchema,
-    logoutSchema,
-  } from '../validators/auth.validator';
+import express from "express";
+import { AuthController } from "../controllers/auth.controller";
+import { authMiddleware } from "../middleware/auth.middleware";
 
 const router = express.Router();
 
-router.post('/register', validateRequest(registerSchema), register);
-router.post('/login', validateRequest(loginSchema), login);
-router.post('/refresh-token', validateRequest(refreshTokenSchema, 'cookies'), refreshToken);
-router.post('/logout', validateRequest(logoutSchema, 'cookies'), logout);
-router.get('/check-auth', authenticateToken, checkAuth);
-
-router.get('/profile', authenticateToken, (req, res) => {
-    res.json({ message: 'This is a protected route', user: req.user });
-});
+router.post("/register", AuthController.register);
+router.post("/login", AuthController.login);
+router.post("/logout", AuthController.logout);
+router.post("/refresh", AuthController.refreshToken);
+router.get("/me", authMiddleware, AuthController.me);
 
 export default router;
