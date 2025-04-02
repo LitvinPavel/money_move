@@ -136,15 +136,15 @@ private async getLastWorkDayBefore(
     const year = date.getFullYear();
     const cacheKey = `workdays_${year}`;
     
-    // Проверка кэша
-    const cachedResult = await pool.query(
-      `SELECT data FROM calendar_cache WHERE key = $1 AND expires_at > NOW()`,
-      [cacheKey]
-    );
+    // // Проверка кэша
+    // const cachedResult = await pool.query(
+    //   `SELECT data FROM calendar_cache WHERE key = $1 AND expires_at > NOW()`,
+    //   [cacheKey]
+    // );
 
-    if (cachedResult.rows.length > 0) {
-      return new Map(JSON.parse(cachedResult.rows[0].data));
-    }
+    // if (cachedResult.rows.length > 0) {
+    //   return new Map(JSON.parse(cachedResult.rows[0].data));
+    // }
 
     try {
       const response = await axios.get<ICalendarResponse>(
