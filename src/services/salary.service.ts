@@ -384,7 +384,7 @@ private async getLastWorkDayBefore(
     
     // Если нет зарплат за последние 3 месяца, используем последнюю доступную
     if (new Date(latestSalary.effective_from) < threeMonthsAgo) {
-      console.warn(`Using last available salary from ${latestSalary.effective_from} as there are no recent records`);
+      // console.warn(`Using last available salary from ${latestSalary.effective_from} as there are no recent records`);
       
       // Рассчитываем рабочие часы для текущего месяца
       const workCalendar = await this.getWorkCalendar(date);
