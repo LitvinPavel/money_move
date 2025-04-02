@@ -21,8 +21,30 @@ interface ICalendarResponse {
 export class SalaryService {
   private readonly CALENDAR_API_URL = 'https://xmlcalendar.ru/data/ru';
 
-  // Основной метод расчета зарплаты за месяц
+  // Основной метод с обработкой таймаутов
   async calculateSalaryForMonth(
+    userId: number,
+    date: Date
+  ): Promise<ISalaryCalculationResult> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s общий таймаут
+
+      const result = await Promise.race([
+        this.calculateSalary(userId, date),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Calculation timeout")), 15000))
+      ]);
+
+      clearTimeout(timeout);
+      return result as ISalaryCalculationResult;
+    } catch (error) {
+      console.error("Calculation failed:", error);
+      throw new Error(`Salary calculation canceled: ${error}`);
+    }
+  }
+  // Основной метод расчета зарплаты за месяц
+  private async calculateSalary(
     userId: number,
     date: Date
   ): Promise<ISalaryCalculationResult> {
@@ -126,7 +148,8 @@ private async getLastWorkDayBefore(
 
     try {
       const response = await axios.get<ICalendarResponse>(
-        `${this.CALENDAR_API_URL}/${year}/calendar.json`
+        `${this.CALENDAR_API_URL}/${year}/calendar.json`,
+        { timeout: 5000 }
       );
 
       const calendarData = response.data;

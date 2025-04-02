@@ -13,6 +13,7 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  query_timeout: 60000
 });
 
 export default pool;
