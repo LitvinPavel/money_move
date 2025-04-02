@@ -149,7 +149,7 @@ private async getLastWorkDayBefore(
     try {
       const response = await axios.get<ICalendarResponse>(
         `${this.CALENDAR_API_URL}/${year}/calendar.json`,
-        { timeout: 5000 }
+        { timeout: 50000 }
       );
 
       const calendarData = response.data;
