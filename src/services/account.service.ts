@@ -1,15 +1,34 @@
-import { IAccount, ICreateAccount, IUpdateAccount } from "../interfaces/account.interface";
+import { IAccount, ICreateAccount, IUpdateAccount, TotalBalanceResponse, GroupedBalanceResponse } from "../interfaces/account.interface";
 import pool from "../db";
 
 export class AccountService {
   async createAccount(userId: number, data: ICreateAccount): Promise<IAccount> {
-    const { currency, initialBalance = 0, account_name, bank_name } = data;
+    const { 
+      currency, 
+      initialBalance = 0, 
+      account_name, 
+      bank_name,
+      type,
+      plan = 0,
+      interest_rate = null
+    } = data;
+    
     const { rows } = await pool.query<IAccount>(
       `INSERT INTO bank_accounts 
-       (user_id, account_number, balance, currency, account_name, bank_name) 
-       VALUES ($1, generate_account_number(), $2, $3, $4, $5) 
-       RETURNING id, account_number, balance, currency, account_name, bank_name, created_at`,
-      [userId, initialBalance, currency, account_name, bank_name]
+       (user_id, account_number, balance, currency, account_name, bank_name, type, plan, interest_rate) 
+       VALUES ($1, generate_account_number(), $2, $3, $4, $5, $6, $7, $8) 
+       RETURNING id, account_number, balance, currency, account_name, bank_name, 
+                 type, plan, interest_rate, created_at`,
+      [
+        userId, 
+        initialBalance, 
+        currency, 
+        account_name, 
+        bank_name,
+        type,
+        plan,
+        type === 'deposit' ? null : interest_rate
+      ]
     );
     return rows[0];
   }
@@ -57,6 +76,24 @@ export class AccountService {
       values.push(updateData.bank_name);
       paramIndex++;
     }
+
+    if (updateData.type !== undefined) {
+      setClauses.push(`type = $${paramIndex}`);
+      values.push(updateData.type);
+      paramIndex++;
+    }
+
+    if (updateData.plan !== undefined) {
+      setClauses.push(`plan = $${paramIndex}`);
+      values.push(updateData.plan);
+      paramIndex++;
+    }
+
+    if (updateData.interest_rate !== undefined) {
+      setClauses.push(`interest_rate = $${paramIndex}`);
+      values.push(updateData.interest_rate);
+      paramIndex++;
+    }
   
     if (setClauses.length === 0) {
       throw new Error('No fields to update');
@@ -69,22 +106,80 @@ export class AccountService {
        SET ${setClauses.join(', ')}, updated_at = NOW()
        WHERE id = $${paramIndex}
        RETURNING id, account_number AS "accountNumber", balance, currency, 
-                 account_name, bank_name, created_at AS "createdAt"`,
+                 account_name, bank_name, type, plan, interest_rate, created_at AS "createdAt"`,
       values
     );
   
     return rows[0];
   }
 
-  async getAccounts(userId: number): Promise<IAccount[]> {
-    const { rows } = await pool.query<IAccount>(
-      `SELECT id, account_number, balance, currency, account_name, bank_name
-       FROM bank_accounts 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC`,
-      [userId]
-    );
+  async getAccounts(
+    userId: number, 
+    filters?: {
+      type?: string;
+      bank_name?: string;
+    }
+  ): Promise<IAccount[]> {
+    let query = `
+      SELECT id, account_number, balance, currency, 
+             account_name, bank_name, type, plan, interest_rate
+      FROM bank_accounts 
+      WHERE user_id = $1
+    `;
+    
+    const params: any[] = [userId];
+    let paramIndex = 2;
+
+    if (filters?.type) {
+      query += ` AND type = $${paramIndex}`;
+      params.push(filters.type);
+      paramIndex++;
+    }
+
+    if (filters?.bank_name) {
+      query += ` AND bank_name = $${paramIndex}`;
+      params.push(filters.bank_name);
+      paramIndex++;
+    }
+    
+    query += ` ORDER BY created_at DESC`;
+    
+    const { rows } = await pool.query<IAccount>(query, params);
     return rows;
+  }
+
+  async getTotalBalance(
+    userId: number,
+    groupBy?: 'type' | 'bank_name'
+  ): Promise<TotalBalanceResponse | GroupedBalanceResponse> {
+    const params: any[] = [userId];
+  
+    if (!groupBy) {
+      // Общая сумма без группировки
+      const { rows } = await pool.query<{ total: string }>(`
+        SELECT SUM(balance) as total
+        FROM bank_accounts
+        WHERE user_id = $1
+      `, params);
+      
+      return { total: Number(rows[0]?.total) || 0 };
+    }
+  
+    // Группировка по указанному полю
+    const { rows } = await pool.query<{ [key: string]: string, total: string }>(`
+      SELECT ${groupBy}, SUM(balance) as total
+      FROM bank_accounts
+      WHERE user_id = $1
+      GROUP BY ${groupBy}
+    `, params);
+  
+    // Преобразуем результат в объект с числовыми значениями
+    const result: { [key: string]: number } = {};
+    rows.forEach(row => {
+      result[row[groupBy]] = Number(row.total);
+    });
+  
+    return result;
   }
 
   async deleteAccount(userId: number, accountId: number): Promise<boolean> {

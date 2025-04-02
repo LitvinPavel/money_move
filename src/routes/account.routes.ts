@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { AccountController } from '../controllers/accounts.controller';
-import { accountSchemas, validate } from '../middleware/validation.middleware';
+import { accountSchemas, validate, validateQuery } from '../middleware/validation.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router: Router = express.Router();
@@ -21,7 +21,14 @@ router.put(
 
 router.get(
   '/',
+  validateQuery(accountSchemas.getAccounts),
   accountController.getAccounts
+);
+
+router.get(
+  '/balance',
+  validateQuery(accountSchemas.getTotalBalance),
+  accountController.getTotalBalance
 );
 
 router.delete(

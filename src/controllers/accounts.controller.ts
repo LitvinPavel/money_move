@@ -46,8 +46,23 @@ export class AccountController {
     try {
       const userId = req.user?.userId;
       if (!userId) throw new Error('Unauthorized');
+      const { type, bank_name } = req.query as { type?: string; bank_name?: string; };
+      const accounts = await this.accountService.getAccounts(userId, { type, bank_name });
+      res.json(accounts);
+    } catch (error) {
+        res.status(500).json({ error: (error as { message: string; }).message });
+      }
+  };
 
-      const accounts = await this.accountService.getAccounts(userId);
+  public getTotalBalance = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new Error('Unauthorized');
+      const { groupBy } = req.query as { groupBy: 'type' | 'bank_name'; };
+      if (groupBy && !['type', 'bank_name'].includes(groupBy)) {
+        throw new Error('Invalid groupBy parameter. Allowed values: "type", "bank_name"');
+      }
+      const accounts = await this.accountService.getTotalBalance(userId, groupBy);
       res.json(accounts);
     } catch (error) {
         res.status(500).json({ error: (error as { message: string; }).message });
