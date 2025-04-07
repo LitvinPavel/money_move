@@ -9,6 +9,25 @@ export class AccountController {
     this.accountService = new AccountService();
   }
 
+  public getBanks = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new Error('Unauthorized');
+
+      const { search, page = '1', pageSize = '20' } = req.query;
+
+      const result = await this.accountService.getRussianBanksPaginated(
+        search?.toString(),
+        parseInt(page.toString(), 10),
+        parseInt(pageSize.toString(), 10)
+      );
+      
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ error: (error as { message: string; }).message });
+    }
+  };
+
   public createAccount = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = req.user?.userId;
@@ -46,8 +65,8 @@ export class AccountController {
     try {
       const userId = req.user?.userId;
       if (!userId) throw new Error('Unauthorized');
-      const { type, bank_name } = req.query as { type?: string; bank_name?: string; };
-      const accounts = await this.accountService.getAccounts(userId, { type, bank_name });
+      const { type, bank_bic } = req.query as { type?: string; bank_bic?: string; };
+      const accounts = await this.accountService.getAccounts(userId, { type, bank_bic });
       res.json(accounts);
     } catch (error) {
         res.status(500).json({ error: (error as { message: string; }).message });
@@ -58,9 +77,9 @@ export class AccountController {
     try {
       const userId = req.user?.userId;
       if (!userId) throw new Error('Unauthorized');
-      const { groupBy } = req.query as { groupBy: 'type' | 'bank_name'; };
-      if (groupBy && !['type', 'bank_name'].includes(groupBy)) {
-        throw new Error('Invalid groupBy parameter. Allowed values: "type", "bank_name"');
+      const { groupBy } = req.query as { groupBy: 'type' | 'bank_bic'; };
+      if (groupBy && !['type', 'bank_bic'].includes(groupBy)) {
+        throw new Error('Invalid groupBy parameter. Allowed values: "type", "bank_bic"');
       }
       const accounts = await this.accountService.getTotalBalance(userId, groupBy);
       res.json(accounts);

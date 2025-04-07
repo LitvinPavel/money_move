@@ -21,7 +21,7 @@ export interface ICreateAccount {
   currency: string;
   initialBalance?: number;
   account_name: string;
-  bank_name: string;
+  bank_bic: string;
   type: AccountType;
   plan?: number;
   interest_rate?: number | null;
@@ -31,7 +31,7 @@ export interface IUpdateAccount {
   currency?: string;
   balance?: number;
   account_name?: string;
-  bank_name?: string;
+  bank_bic?: string;
   type?: AccountType;
   plan?: number;
   interest_rate?: number | null;

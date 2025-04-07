@@ -37,12 +37,40 @@ const interestRate = Joi.number()
     'any.required': 'Interest rate is required for non-deposit accounts'
   });
 
+  const getBanksSchema = Joi.object({
+    search: Joi.string()
+      .min(1)
+      .max(100)
+      .trim()
+      .optional()
+      .description('Поисковая строка (по названию или БИКу банка)'),
+      
+    page: Joi.number()
+      .integer()
+      .min(1)
+      .default(1)
+      .optional()
+      .description('Номер страницы (начиная с 1)'),
+      
+    pageSize: Joi.number()
+      .integer()
+      .min(1)
+      .max(100)
+      .default(20)
+      .optional()
+      .description('Количество элементов на странице (1-100)')
+  }).options({
+    stripUnknown: true, // удаляет неописанные поля
+    abortEarly: false // возвращает все ошибки валидации, а не только первую
+  });
+
 // Схемы валидации для счетов
 export const accountSchemas = {
+  getBanks: getBanksSchema,
   createAccount: Joi.object({
     currency: Joi.string().length(3).required(),
     initialBalance: Joi.number().min(0).default(0),
-    bank_name: Joi.string().min(3).max(100).required(),
+    bank_bic: Joi.string().min(3).max(100).required(),
     account_name: Joi.string().min(3).max(100).required(),
     type: accountType,
     plan: plan,
@@ -52,7 +80,7 @@ export const accountSchemas = {
   updateAccount: Joi.object({
     currency: Joi.string().length(3).required(),
     balance: Joi.number().min(0).default(0),
-    bank_name: Joi.string().min(3).max(100).required(),
+    bank_bic: Joi.string().min(3).max(100).required(),
     account_name: Joi.string().min(3).max(100).required(),
     type: Joi.string().valid('deposit', 'savings', 'investment', 'credit'),
     plan: plan,
@@ -60,12 +88,12 @@ export const accountSchemas = {
   }).min(1),
 
   getAccounts: Joi.object({
-    bank_name: Joi.string().min(3).max(100),
+    bank_bic: Joi.string().min(3).max(100),
     type: Joi.string().valid('deposit', 'savings', 'investment', 'credit')
   }),
 
   getTotalBalance: Joi.object({
-    groupBy: Joi.string().valid('type', 'bank_name')
+    groupBy: Joi.string().valid('type', 'bank_bic')
   }),
 
   deleteAccount: Joi.object({

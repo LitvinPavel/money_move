@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import accountRoutes from './routes/account.routes';
+import bankRoutes from './routes/bank.routes';
 import transactionRoutes from './routes/transaction.routes';
 import salaryRoutes from './routes/salary.routes';
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -24,6 +25,7 @@ app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
+app.use('/api/banks', bankRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/salary', salaryRoutes);
 
