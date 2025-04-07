@@ -8,18 +8,21 @@ export interface ITransaction {
   status: string;
   description?: string;
   created_at: Date;
+  is_debt?: boolean;
 }
 
 export interface IDeposit {
   accountId: number;
   amount: number;
   description?: string;
+  is_debt?: boolean;
 }
 
 export interface IWithdrawal {
   accountId: number;
   amount: number;
   description?: string;
+  is_debt?: boolean;
 }
 
 export interface ITransfer {
@@ -27,6 +30,7 @@ export interface ITransfer {
   toAccountId: number;
   amount: number;
   description?: string;
+  is_debt?: boolean;
 }
 
 export interface ITransactionHistory {
@@ -36,6 +40,8 @@ export interface ITransactionHistory {
   status: string;
   description?: string;
   created_at: Date;
+  is_debt?: boolean;
+  bank_name?: string;
   account_number: string;
   account_currency: string;
   related_account_number?: string;

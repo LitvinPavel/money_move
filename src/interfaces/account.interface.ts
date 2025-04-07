@@ -38,6 +38,7 @@ export interface IUpdateAccount {
   plan?: number;
   interest_rate?: number | null;
   is_salary?: boolean;
+  debt?: number;
 }
 
 export interface IDeleteAccount {

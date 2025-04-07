@@ -12,185 +12,181 @@ export class TransactionService {
   async deposit(data: IDeposit): Promise<ITransaction> {
     await pool.query("BEGIN");
 
-    try {
-      // Получаем информацию о банке для счета
-      const {
-        rows: [account],
-      } = await pool.query<{ bank_name: string }>(
-        "SELECT bank_name FROM bank_accounts WHERE id = $1",
-        [data.accountId]
-      );
+  try {
+    // Получаем информацию о банке и текущем долге
+    const {
+      rows: [account],
+    } = await pool.query<{ bank_name: string; debt: number }>(
+      "SELECT bank_name, debt FROM bank_accounts WHERE id = $1 FOR UPDATE",
+      [data.accountId]
+    );
 
-      const {
-        rows: [transaction],
-      } = await pool.query<ITransaction>(
-        `INSERT INTO transactions 
-       (account_id, amount, type, description, bank_name) 
-       VALUES ($1, $2, 'deposit', $3, $4)
-       RETURNING id, amount, type, status, description, created_at, bank_name`,
-        [data.accountId, data.amount, data.description, account.bank_name]
-      );
+    const {
+      rows: [transaction],
+    } = await pool.query<ITransaction>(
+      `INSERT INTO transactions 
+       (account_id, amount, type, description, bank_name, is_debt) 
+       VALUES ($1, $2, 'deposit', $3, $4, $5)
+       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+      [data.accountId, data.amount, data.description, account.bank_name, data.is_debt || false]
+    );
 
+    if (data.is_debt && account.debt > 0) {
+      // Для долгового пополнения уменьшаем долг (но не ниже 0)
+      const amountToReduce = Math.min(data.amount, account.debt);
       await pool.query(
         `UPDATE bank_accounts 
-       SET balance = balance + $1 
-       WHERE id = $2`,
+         SET balance = balance + $1,
+             debt = debt - $2
+         WHERE id = $3`,
+        [data.amount, amountToReduce, data.accountId]
+      );
+    } else {
+      // Обычное пополнение - увеличиваем баланс
+      await pool.query(
+        `UPDATE bank_accounts 
+         SET balance = balance + $1 
+         WHERE id = $2`,
         [data.amount, data.accountId]
       );
-
-      await pool.query("COMMIT");
-      return transaction;
-    } catch (error) {
-      await pool.query("ROLLBACK");
-      throw error;
     }
+
+    await pool.query("COMMIT");
+    return transaction;
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
   }
 
   async withdrawal(data: IWithdrawal): Promise<ITransaction> {
     await pool.query("BEGIN");
 
-    try {
-      // Получаем информацию о балансе и банке для счета
-      const {
-        rows: [account],
-      } = await pool.query<{ balance: number; bank_name: string }>(
-        "SELECT balance, bank_name FROM bank_accounts WHERE id = $1 FOR UPDATE",
-        [data.accountId]
-      );
+  try {
+    // Получаем информацию о балансе, банке и текущем долге
+    const {
+      rows: [account],
+    } = await pool.query<{ balance: number; bank_name: string; debt: number }>(
+      "SELECT balance, bank_name, debt FROM bank_accounts WHERE id = $1 FOR UPDATE",
+      [data.accountId]
+    );
 
-      if (account.balance < data.amount) {
-        throw new Error("Insufficient funds");
-      }
-
-      const {
-        rows: [transaction],
-      } = await pool.query<ITransaction>(
-        `INSERT INTO transactions 
-       (account_id, amount, type, description, bank_name) 
-       VALUES ($1, $2, 'withdrawal', $3, $4)
-       RETURNING id, amount, type, status, description, created_at, bank_name`,
-        [data.accountId, data.amount, data.description, account.bank_name]
-      );
-
-      await pool.query(
-        `UPDATE bank_accounts 
-       SET balance = balance - $1 
-       WHERE id = $2`,
-        [data.amount, data.accountId]
-      );
-
-      await pool.query("COMMIT");
-      return transaction;
-    } catch (error) {
-      await pool.query("ROLLBACK");
-      throw error;
+    if (account.balance < data.amount) {
+      throw new Error("Insufficient funds");
     }
+
+    const {
+      rows: [transaction],
+    } = await pool.query<ITransaction>(
+      `INSERT INTO transactions 
+       (account_id, amount, type, description, bank_name, is_debt) 
+       VALUES ($1, $2, 'withdrawal', $3, $4, $5)
+       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+      [data.accountId, data.amount, data.description, account.bank_name, data.is_debt || false]
+    );
+
+    // Всегда уменьшаем баланс
+    await pool.query(
+      `UPDATE bank_accounts 
+       SET balance = balance - $1
+       ${data.is_debt ? `, debt = debt + $1` : ''}
+       WHERE id = $2`,
+      [data.amount, data.accountId]
+    );
+
+    await pool.query("COMMIT");
+    return transaction;
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
   }
 
   async transfer(
     data: ITransfer
   ): Promise<{ outTransaction: ITransaction; inTransaction: ITransaction }> {
     await pool.query("BEGIN");
+  
+  try {
+    // Проверяем и блокируем исходный счет
+    const {
+      rows: [fromAccount],
+    } = await pool.query<{ balance: number; currency: string; bank_name: string; debt: number }>(
+      "SELECT balance, currency, bank_name, debt FROM bank_accounts WHERE id = $1 FOR UPDATE",
+      [data.fromAccountId]
+    );
 
-    try {
-      // Проверяем и блокируем исходный счет
-      const {
-        rows: [fromAccount],
-      } = await pool.query<{
-        balance: number;
-        currency: string;
-        bank_name: string;
-      }>(
-        "SELECT balance, currency, bank_name FROM bank_accounts WHERE id = $1 FOR UPDATE",
-        [data.fromAccountId]
-      );
-
-      if (fromAccount.balance < data.amount) {
-        throw new Error("Insufficient funds");
-      }
-
-      // Проверяем и блокируем целевой счет
-      const {
-        rows: [toAccount],
-      } = await pool.query<{ currency: string; bank_name: string }>(
-        "SELECT currency, bank_name FROM bank_accounts WHERE id = $1 FOR UPDATE",
-        [data.toAccountId]
-      );
-
-      if (fromAccount.currency !== toAccount.currency) {
-        throw new Error("Currency mismatch");
-      }
-
-      // Создаем исходящую транзакцию с bank_name
-      const {
-        rows: [outTransaction],
-      } = await pool.query<ITransaction>(
-        `INSERT INTO transactions 
-         (account_id, related_account_id, amount, type, description, bank_name) 
-         VALUES ($1, $2, $3, 'transfer_out', $4, $5)
-         RETURNING id, amount, type, status, description, created_at, bank_name`,
-        [
-          data.fromAccountId,
-          data.toAccountId,
-          data.amount,
-          data.description,
-          fromAccount.bank_name,
-        ]
-      );
-
-      // Создаем входящую транзакцию с bank_name
-      const {
-        rows: [inTransaction],
-      } = await pool.query<ITransaction>(
-        `INSERT INTO transactions 
-         (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name) 
-         VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6)
-         RETURNING id, amount, type, status, description, created_at, bank_name`,
-        [
-          data.toAccountId,
-          data.fromAccountId,
-          outTransaction.id,
-          data.amount,
-          data.description,
-          toAccount.bank_name,
-        ]
-      );
-
-      // Обновляем исходящую транзакцию
-      await pool.query(
-        `UPDATE transactions 
-         SET related_transaction_id = $1 
-         WHERE id = $2`,
-        [inTransaction.id, outTransaction.id]
-      );
-
-      // Обновляем балансы счетов
-      await pool.query(
-        `UPDATE bank_accounts 
-         SET balance = balance - $1 
-         WHERE id = $2`,
-        [data.amount, data.fromAccountId]
-      );
-
-      await pool.query(
-        `UPDATE bank_accounts 
-         SET balance = balance + $1 
-         WHERE id = $2`,
-        [data.amount, data.toAccountId]
-      );
-
-      await pool.query("COMMIT");
-      return {
-        outTransaction: {
-          ...outTransaction,
-          related_transaction_id: inTransaction.id,
-        },
-        inTransaction,
-      };
-    } catch (error) {
-      await pool.query("ROLLBACK");
-      throw error;
+    if (fromAccount.balance < data.amount) {
+      throw new Error("Insufficient funds");
     }
+
+    // Проверяем и блокируем целевой счет
+    const {
+      rows: [toAccount],
+    } = await pool.query<{ currency: string; bank_name: string }>(
+      "SELECT currency, bank_name FROM bank_accounts WHERE id = $1 FOR UPDATE",
+      [data.toAccountId]
+    );
+
+    if (fromAccount.currency !== toAccount.currency) {
+      throw new Error("Currency mismatch");
+    }
+
+    // Создаем исходящую транзакцию
+    const {
+      rows: [outTransaction],
+    } = await pool.query<ITransaction>(
+      `INSERT INTO transactions 
+       (account_id, related_account_id, amount, type, description, bank_name, is_debt) 
+       VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6)
+       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+      [data.fromAccountId, data.toAccountId, data.amount, data.description, fromAccount.bank_name, data.is_debt || false]
+    );
+
+    // Создаем входящую транзакцию
+    const {
+      rows: [inTransaction],
+    } = await pool.query<ITransaction>(
+      `INSERT INTO transactions 
+       (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name, is_debt) 
+       VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false)  // is_debt всегда false для входящего перевода
+       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+      [data.toAccountId, data.fromAccountId, outTransaction.id, data.amount, data.description, toAccount.bank_name]
+    );
+
+    // Обновляем исходящую транзакцию
+    await pool.query(
+      `UPDATE transactions 
+       SET related_transaction_id = $1 
+       WHERE id = $2`,
+      [inTransaction.id, outTransaction.id]
+    );
+
+    // Обновляем балансы счетов
+    await pool.query(
+      `UPDATE bank_accounts 
+       SET balance = balance - $1
+       ${data.is_debt ? `, debt = debt + $1` : ''}
+       WHERE id = $2`,
+      [data.amount, data.fromAccountId]
+    );
+
+    await pool.query(
+      `UPDATE bank_accounts 
+       SET balance = balance + $1 
+       WHERE id = $2`,
+      [data.amount, data.toAccountId]
+    );
+
+    await pool.query("COMMIT");
+    return { 
+      outTransaction: { ...outTransaction, related_transaction_id: inTransaction.id },
+      inTransaction 
+    };
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
   }
 
   async getHistory(
@@ -208,18 +204,18 @@ export class TransactionService {
       sortField = "created_at",
       sortDirection = "DESC",
     } = options;
-
+  
     // Валидация параметров сортировки
     const validSortFields = ["created_at", "amount", "type"];
     const validSortDirections = ["ASC", "DESC"];
-
+  
     const effectiveSortField = validSortFields.includes(sortField)
       ? sortField
       : "created_at";
     const effectiveSortDirection = validSortDirections.includes(sortDirection)
       ? sortDirection
       : "DESC";
-
+  
     // Базовый запрос
     const query: {
       text: string;
@@ -233,6 +229,7 @@ export class TransactionService {
           t.status,
           t.description,
           t.created_at,
+          t.is_debt,
           t.bank_name,
           ba.account_number,
           ba.currency AS account_currency,
@@ -253,39 +250,35 @@ export class TransactionService {
       `,
       values: [userId],
     };
-
+  
     // Добавляем условия фильтрации
     if (accountId) {
       query.text += ` AND t.account_id = $${query.values.length + 1}`;
       query.values.push(accountId);
     }
-
+  
     // Обработка курсора для пагинации
     if (cursor) {
       const operator = effectiveSortDirection === "DESC" ? "<" : ">";
-      query.text += ` AND t.${effectiveSortField} ${operator} $${
-        query.values.length + 1
-      }`;
+      query.text += ` AND t.${effectiveSortField} ${operator} $${query.values.length + 1}`;
       query.values.push(
         effectiveSortField === "amount" ? parseFloat(cursor as string) : cursor
       );
     }
-
+  
     // Фильтрация по типу транзакции
     if (typeFilter) {
       query.text += ` AND t.type = $${query.values.length + 1}`;
       query.values.push(typeFilter);
     }
-
+  
     // Фильтрация по дате создания
     if (createdAt) {
       const date = new Date(createdAt);
       const nextDay = new Date(date);
       nextDay.setDate(date.getDate() + 1);
-
-      query.text += ` AND t.created_at >= $${
-        query.values.length + 1
-      } AND t.created_at < $${query.values.length + 2}`;
+      
+      query.text += ` AND t.created_at >= $${query.values.length + 1} AND t.created_at < $${query.values.length + 2}`;
       query.values.push(date.toISOString());
       query.values.push(nextDay.toISOString());
     } else {
@@ -300,12 +293,12 @@ export class TransactionService {
         query.values.push(endDateObj.toISOString());
       }
     }
-
+  
     // Добавляем сортировку и лимит
     query.text += ` ORDER BY t.${effectiveSortField} ${effectiveSortDirection}`;
     query.text += ` LIMIT $${query.values.length + 1}`;
     query.values.push(Math.min(limit, 100));
-
+  
     // Выполняем запрос
     const { rows } = await pool.query<ITransactionHistory>(query);
     return rows;

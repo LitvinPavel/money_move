@@ -25,7 +25,7 @@ export class TransactionController {
       const userId = (req as any).user.userId;
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description } = req.body as IDeposit;
+      const { accountId, amount, description, is_debt } = req.body as IDeposit;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -40,6 +40,7 @@ export class TransactionController {
         accountId,
         amount,
         description,
+        is_debt
       });
 
       res.status(201).json(transaction);
@@ -58,7 +59,7 @@ export class TransactionController {
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description } = req.body as IWithdrawal;
+      const { accountId, amount, description, is_debt } = req.body as IWithdrawal;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -73,6 +74,7 @@ export class TransactionController {
         accountId,
         amount,
         description,
+        is_debt
       });
 
       res.status(201).json(transaction);
@@ -90,7 +92,7 @@ export class TransactionController {
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { fromAccountId, toAccountId, amount, description } =
+      const { fromAccountId, toAccountId, amount, description, is_debt } =
         req.body as ITransfer;
 
       const fromBelongs = await this.accountService.accountBelongsToUser(
@@ -112,6 +114,7 @@ export class TransactionController {
         toAccountId,
         amount,
         description,
+        is_debt
       });
 
       res.status(201).json(result);

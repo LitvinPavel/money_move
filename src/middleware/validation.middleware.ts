@@ -111,12 +111,14 @@ export const transactionSchemas = {
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
+    is_debt: Joi.boolean().default(false)
   }),
 
   withdrawal: Joi.object({
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
+    is_debt: Joi.boolean().default(false)
   }),
 
   transfer: Joi.object({
@@ -124,6 +126,7 @@ export const transactionSchemas = {
     toAccountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
+    is_debt: Joi.boolean().default(false)
   }),
 
   history: Joi.object({

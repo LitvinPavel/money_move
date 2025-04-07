@@ -270,7 +270,7 @@ export class AccountService {
   ): Promise<IAccount[]> {
     let query = `
       SELECT id, account_number, balance, currency, 
-             account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary
+             account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary, debt
       FROM bank_accounts 
       WHERE user_id = $1
     `;
