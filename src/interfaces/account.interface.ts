@@ -12,6 +12,7 @@ export interface IAccount {
   type: AccountType;
   plan?: number;
   interest_rate?: number | null;
+  debt?: number;
   balance: number;
   currency: string;
   created_at: Date;
