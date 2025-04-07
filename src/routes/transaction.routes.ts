@@ -30,6 +30,12 @@ router.post(
   transactionController.transfer
 );
 
+router.put(
+  '/:id',
+  validate(transactionSchemas.updateTransaction),
+  transactionController.updateTransaction
+);
+
 router.get(
   "/history",
   validateQuery(transactionSchemas.history),

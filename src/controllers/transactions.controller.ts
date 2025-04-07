@@ -123,6 +123,53 @@ export class TransactionController {
     }
   };
 
+  public updateTransaction = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const userId = (req as any).user.userId;
+
+      if (!userId) throw new Error("Unauthorized");
+
+      const transactionId = parseInt(req.params.id);
+      const updateData = req.body;
+      // 2. Проверка корректности ID транзакции
+      if (isNaN(transactionId)) {
+        res.status(400).json({ error: 'Invalid transaction ID' });
+        return;
+      }
+
+      const updatedTransaction = await this.transactionService.updateTransaction(
+        userId,
+        transactionId,
+        updateData
+      );
+      
+      res.status(200).json({
+        message: 'Transaction updated successfully',
+        transaction: updatedTransaction,
+      });
+    } catch (error) {
+      const { message } = (error as { message: string });
+      if (message === 'Transaction not found or access denied') {
+        res.status(404).json({ error: message });
+        return;
+      }
+      if (message === 'No access to related transaction') {
+        res.status(403).json({ error: message });
+        return;
+      }
+      if (message === 'No fields to update') {
+        res.status(400).json({ error: message });
+        return;
+      }
+
+      console.error('Error updating transaction:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+
   public getHistory = async (
     req: Request,
     res: Response

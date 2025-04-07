@@ -129,6 +129,12 @@ export const transactionSchemas = {
     is_debt: Joi.boolean().default(false)
   }),
 
+  updateTransaction: Joi.object({
+    description: Joi.string().trim().max(500).optional(),
+    status: Joi.string().valid('pending', 'completed', 'failed', 'cancelled').optional(),
+    is_debt: Joi.boolean().optional(),
+  }).min(1).message('At least one field must be provided for update'),
+
   history: Joi.object({
     accountId: Joi.number().integer().positive(),
     cursor: Joi.alternatives().try(Joi.string().isoDate(), Joi.number()),

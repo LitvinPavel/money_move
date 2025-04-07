@@ -189,6 +189,109 @@ export class TransactionService {
   }
   }
 
+  async updateTransaction(
+    userId: number,
+    transactionId: number,
+    updateData: {
+      description?: string;
+      status?: string;
+      is_debt?: boolean;
+    }
+  ): Promise<ITransaction> {
+    await pool.query("BEGIN");
+  
+    try {
+      // 1. Проверяем существование транзакции и права доступа
+      const { rows } = await pool.query<{
+        id: number;
+        type: string;
+        related_transaction_id: number | null;
+      }>(
+        `SELECT t.id, t.type, t.related_transaction_id
+         FROM transactions t
+         JOIN bank_accounts ba ON t.account_id = ba.id
+         WHERE t.id = $1 AND ba.user_id = $2`,
+        [transactionId, userId]
+      );
+  
+      if (rows.length === 0) {
+        throw new Error("Transaction not found or access denied");
+      }
+  
+      const transaction = rows[0];
+  
+      // 2. Для переводов проверяем доступ к связанной транзакции
+      if (transaction.type.includes('transfer') && transaction.related_transaction_id) {
+        const relatedAccess = await pool.query(
+          `SELECT 1 FROM transactions t
+           JOIN bank_accounts ba ON t.account_id = ba.id
+           WHERE t.id = $1 AND ba.user_id = $2`,
+          [transaction.related_transaction_id, userId]
+        );
+  
+        if (relatedAccess.rows.length === 0) {
+          throw new Error("No access to related transaction");
+        }
+      }
+  
+      // 3. Подготавливаем поля для обновления
+      const setClauses: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+  
+      if (updateData.description !== undefined) {
+        setClauses.push(`description = $${paramIndex}`);
+        values.push(updateData.description);
+        paramIndex++;
+      }
+  
+      if (updateData.status !== undefined) {
+        setClauses.push(`status = $${paramIndex}`);
+        values.push(updateData.status);
+        paramIndex++;
+      }
+  
+      if (updateData.is_debt !== undefined) {
+        setClauses.push(`is_debt = $${paramIndex}`);
+        values.push(updateData.is_debt);
+        paramIndex++;
+      }
+  
+      if (setClauses.length === 0) {
+        throw new Error("No fields to update");
+      }
+  
+      values.push(transactionId);
+      const setClause = setClauses.join(", ");
+  
+      // 4. Обновляем транзакцию
+      const { rows: [updatedTransaction] } = await pool.query<ITransaction>(
+        `UPDATE transactions
+         SET ${setClause}, updated_at = NOW()
+         WHERE id = $${paramIndex}
+         RETURNING id, amount, type, status, description, 
+                   created_at, updated_at, bank_name, is_debt`,
+        values
+      );
+  
+      // 5. Для переводов обновляем связанную транзакцию (только статус)
+      if (transaction.type.includes('transfer') && transaction.related_transaction_id && updateData.status) {
+        await pool.query(
+          `UPDATE transactions
+           SET status = $1, updated_at = NOW()
+           WHERE id = $2`,
+          [updateData.status, transaction.related_transaction_id]
+        );
+      }
+  
+      await pool.query("COMMIT");
+      return updatedTransaction;
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      throw error;
+    }
+  }
+
   async getHistory(
     userId: number,
     options: ITransactionHistoryOptions
@@ -229,6 +332,7 @@ export class TransactionService {
           t.status,
           t.description,
           t.created_at,
+          t.updated_at,
           t.is_debt,
           t.bank_name,
           ba.account_number,

@@ -8,6 +8,7 @@ export interface ITransaction {
   status: string;
   description?: string;
   created_at: Date;
+  updated_at?: Date;
   is_debt?: boolean;
 }
 
