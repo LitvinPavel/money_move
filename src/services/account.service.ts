@@ -1,12 +1,18 @@
-import { IAccount, ICreateAccount, IUpdateAccount, TotalBalanceResponse, GroupedBalanceResponse } from "../interfaces/account.interface";
+import {
+  IAccount,
+  ICreateAccount,
+  IUpdateAccount,
+  TotalBalanceResponse,
+  GroupedBalanceResponse,
+} from "../interfaces/account.interface";
 import pool from "../db";
-import axios from 'axios';
-import iconv from 'iconv-lite';
-import { parseStringPromise, processors } from 'xml2js';
+import axios from "axios";
+import iconv from "iconv-lite";
+import { parseStringPromise, processors } from "xml2js";
 
 export class AccountService {
   private banksCache: {
-    data: Array<{bic: string, name: string}>;
+    data: Array<{ bic: string; name: string }>;
     timestamp: number;
   } | null = null;
 
@@ -14,26 +20,32 @@ export class AccountService {
     try {
       // Проверяем, когда последний раз обновлялись данные
       const { rows } = await pool.query(
-        'SELECT MAX(updated_at) as last_update FROM russian_banks'
+        "SELECT MAX(updated_at) as last_update FROM russian_banks"
       );
-      
+
       const lastUpdate = rows[0]?.last_update;
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      
+
       // Если данные актуальны, пропускаем обновление
       if (lastUpdate && new Date(lastUpdate) > oneYearAgo) {
         return;
       }
-      
+
       // Получаем данные из ЦБ РФ
-      const response = await axios.get('https://www.cbr.ru/scripts/XML_bic.asp', {
-        responseType: 'arraybuffer',
-        responseEncoding: 'binary'
-      });
+      const response = await axios.get(
+        "https://www.cbr.ru/scripts/XML_bic.asp",
+        {
+          responseType: "arraybuffer",
+          responseEncoding: "binary",
+        }
+      );
       // Конвертируем в правильную кодировку
-      const xmlData = iconv.decode(Buffer.from(response.data, 'binary'), 'win1251');
-    
+      const xmlData = iconv.decode(
+        Buffer.from(response.data, "binary"),
+        "win1251"
+      );
+
       // Парсим XML с правильными настройками
       const parsed = await parseStringPromise(xmlData, {
         explicitArray: false,
@@ -45,39 +57,39 @@ export class AccountService {
         attrValueProcessors: [
           (value, name) => {
             // Особый обработчик для атрибута BIC
-            if (name === 'Bic') {
-              return value.toString().padStart(9, '0');
+            if (name === "Bic") {
+              return value.toString().padStart(9, "0");
             }
             return value;
-          }
+          },
         ],
       });
 
       // Начинаем транзакцию
-      await pool.query('BEGIN');
-      
+      await pool.query("BEGIN");
+
       try {
         // Очищаем старые данные
-        await pool.query('TRUNCATE russian_banks');
-        console.log(parsed.BicCode.Record)
+        await pool.query("TRUNCATE russian_banks");
+        console.log(parsed.BicCode.Record);
         // Вставляем новые данные
-        const records = Array.isArray(parsed.BicCode.Record) 
-        ? parsed.BicCode.Record 
-        : [parsed.BicCode.Record];
+        const records = Array.isArray(parsed.BicCode.Record)
+          ? parsed.BicCode.Record
+          : [parsed.BicCode.Record];
 
         for (const record of records) {
           // Обеспечиваем правильный формат BIC (9 цифр, с ведущими нулями)
           let bic = record.Bic._;
-          if (typeof bic === 'number') {
-            bic = bic.toString().padStart(9, '0');
-          } else if (typeof bic === 'string') {
-            bic = bic.padStart(9, '0');
+          if (typeof bic === "number") {
+            bic = bic.toString().padStart(9, "0");
+          } else if (typeof bic === "string") {
+            bic = bic.padStart(9, "0");
           } else {
             continue;
           }
 
           const name = record.ShortName._?.trim();
-          
+
           if (bic.length !== 9 || !/^\d+$/.test(bic)) {
             console.warn(`Invalid BIC format: ${bic}`);
             continue;
@@ -88,55 +100,55 @@ export class AccountService {
             continue;
           }
           await pool.query(
-            'INSERT INTO russian_banks (bic, name) VALUES ($1, $2)',
+            "INSERT INTO russian_banks (bic, name) VALUES ($1, $2)",
             [bic, name]
           );
         }
-        
-        await pool.query('COMMIT');
-        console.log('Russian banks data updated successfully');
+
+        await pool.query("COMMIT");
+        console.log("Russian banks data updated successfully");
       } catch (error) {
-        await pool.query('ROLLBACK');
+        await pool.query("ROLLBACK");
         throw error;
       }
     } catch (error) {
-      console.error('Failed to update Russian banks data:', error);
+      console.error("Failed to update Russian banks data:", error);
     }
   }
 
-  async getRussianBanks(): Promise<Array<{bic: string, name: string}>> {
+  async getRussianBanks(): Promise<Array<{ bic: string; name: string }>> {
     if (this.banksCache && Date.now() - this.banksCache.timestamp < 3600000) {
       return this.banksCache.data;
     }
     await this.fetchAndCacheRussianBanks();
-    
+
     const { rows } = await pool.query(
-      'SELECT bic, name FROM russian_banks ORDER BY name'
+      "SELECT bic, name FROM russian_banks ORDER BY name"
     );
 
     this.banksCache = {
       data: rows,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     return rows;
   }
 
   async createAccount(userId: number, data: ICreateAccount): Promise<IAccount> {
-    const { 
-      currency, 
-      initialBalance = 0, 
-      account_name, 
+    const {
+      currency,
+      initialBalance = 0,
+      account_name,
       bank_bic,
       type,
       plan = 0,
       interest_rate = null,
-      is_salary = false
+      is_salary = false,
     } = data;
-    
+
     // Получаем название банка по БИК
     const bank = await this.getBankByBic(bank_bic);
-    
+
     const { rows } = await pool.query<IAccount>(
       `INSERT INTO bank_accounts 
        (user_id, account_number, balance, currency, account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary) 
@@ -144,31 +156,33 @@ export class AccountService {
        RETURNING id, account_number, balance, currency, account_name, bank_bic, bank_name,
                  type, plan, interest_rate, is_salary, created_at`,
       [
-        userId, 
-        initialBalance, 
-        currency, 
-        account_name, 
+        userId,
+        initialBalance,
+        currency,
+        account_name,
         bank_bic,
         bank.name,
         type,
         plan,
-        type === 'deposit' ? null : interest_rate,
-        is_salary
+        type === "deposit" ? null : interest_rate,
+        is_salary,
       ]
     );
     return rows[0];
   }
 
-  private async getBankByBic(bic: string): Promise<{bic: string, name: string}> {
+  private async getBankByBic(
+    bic: string
+  ): Promise<{ bic: string; name: string }> {
     const { rows } = await pool.query(
-      'SELECT bic, name FROM russian_banks WHERE bic = $1',
+      "SELECT bic, name FROM russian_banks WHERE bic = $1",
       [bic]
     );
-    
+
     if (rows.length === 0) {
-      throw new Error('Bank with this BIC not found');
+      throw new Error("Bank with this BIC not found");
     }
-    
+
     return rows[0];
   }
 
@@ -179,14 +193,14 @@ export class AccountService {
   ): Promise<IAccount> {
     // Проверяем, что счет принадлежит пользователю
     const ownershipCheck = await pool.query(
-      'SELECT 1 FROM bank_accounts WHERE id = $1 AND user_id = $2',
+      "SELECT 1 FROM bank_accounts WHERE id = $1 AND user_id = $2",
       [accountId, userId]
     );
-  
+
     if (ownershipCheck.rows.length === 0) {
-      throw new Error('Account not found or access denied');
+      throw new Error("Account not found or access denied");
     }
-  
+
     // Динамическое построение запроса
     const setClauses: string[] = [];
     const values: any[] = [];
@@ -198,13 +212,13 @@ export class AccountService {
       values.push(updateData.is_salary);
       paramIndex++;
     }
-  
+
     if (updateData.currency !== undefined) {
       setClauses.push(`currency = $${paramIndex}`);
       values.push(updateData.currency);
       paramIndex++;
     }
-  
+
     if (updateData.balance !== undefined) {
       setClauses.push(`balance = $${paramIndex}`);
       values.push(updateData.balance);
@@ -220,7 +234,10 @@ export class AccountService {
     if (updateData.bank_bic !== undefined) {
       // Получаем название банка по новому БИК
       const bank = await this.getBankByBic(updateData.bank_bic);
-      setClauses.push(`bank_bic = $${paramIndex}`, `bank_name = $${paramIndex + 1}`);
+      setClauses.push(
+        `bank_bic = $${paramIndex}`,
+        `bank_name = $${paramIndex + 1}`
+      );
       values.push(updateData.bank_bic, bank.name);
       paramIndex += 2;
     }
@@ -242,39 +259,50 @@ export class AccountService {
       values.push(updateData.interest_rate);
       paramIndex++;
     }
-  
+
     if (setClauses.length === 0) {
-      throw new Error('No fields to update');
+      throw new Error("No fields to update");
     }
-  
+
     values.push(accountId);
-  
+
     const { rows } = await pool.query<IAccount>(
       `UPDATE bank_accounts 
-       SET ${setClauses.join(', ')}, updated_at = NOW()
+       SET ${setClauses.join(", ")}, updated_at = NOW()
        WHERE id = $${paramIndex}
        RETURNING id, account_number AS "accountNumber", balance, currency, 
                  account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary, created_at AS "createdAt"`,
       values
     );
-  
+
     return rows[0];
   }
 
   async getAccounts(
-    userId: number, 
+    userId: number,
     filters?: {
       type?: string;
       bank_bic?: string;
     }
   ): Promise<IAccount[]> {
     let query = `
-      SELECT id, account_number, balance, currency, 
-             account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary, debt
-      FROM bank_accounts 
-      WHERE user_id = $1
+      SELECT 
+      id,
+      account_number,
+      balance,
+      currency, 
+      account_name, 
+      bank_bic, 
+      bank_name, 
+      type, 
+      plan,
+      interest_rate,
+      is_salary,
+      created_at
+    FROM bank_accounts 
+    WHERE user_id = $1
     `;
-    
+
     const params: any[] = [userId];
     let paramIndex = 2;
 
@@ -289,44 +317,57 @@ export class AccountService {
       params.push(filters.bank_bic);
       paramIndex++;
     }
-    
+
     query += ` ORDER BY created_at DESC`;
-    
-    const { rows } = await pool.query<IAccount>(query, params);
-    return rows;
+
+    const { rows } = await pool.query(query, params);
+    // Явное преобразование типов
+      return rows.map(row => ({
+        ...row,
+        id: parseInt(row.id, 10),
+        balance: parseFloat(row.balance),
+        plan: parseInt(row.plan, 10),
+        interest_rate: row.interest_rate !== null ? parseFloat(row.interest_rate) : null
+      }));
   }
 
   async getTotalBalance(
     userId: number,
-    groupBy?: 'type' | 'bank_bic'
+    groupBy?: "type" | "bank_bic"
   ): Promise<TotalBalanceResponse | GroupedBalanceResponse> {
     const params: any[] = [userId];
-  
+
     if (!groupBy) {
       // Общая сумма без группировки
-      const { rows } = await pool.query<{ total: string }>(`
+      const { rows } = await pool.query<{ total: string }>(
+        `
         SELECT SUM(balance) as total
         FROM bank_accounts
         WHERE user_id = $1
-      `, params);
-      
+      `,
+        params
+      );
+
       return { total: Number(rows[0]?.total) || 0 };
     }
-  
+
     // Группировка по указанному полю
-    const { rows } = await pool.query<{ [key: string]: string, total: string }>(`
+    const { rows } = await pool.query<{ [key: string]: string; total: string }>(
+      `
       SELECT ${groupBy}, SUM(balance) as total
       FROM bank_accounts
       WHERE user_id = $1
       GROUP BY ${groupBy}
-    `, params);
-  
+    `,
+      params
+    );
+
     // Преобразуем результат в объект с числовыми значениями
     const result: { [key: string]: number } = {};
-    rows.forEach(row => {
+    rows.forEach((row) => {
       result[row[groupBy]] = Number(row.total);
     });
-  
+
     return result;
   }
 
@@ -358,17 +399,17 @@ export class AccountService {
     page: number = 1,
     pageSize: number = 20
   ): Promise<{
-    banks: Array<{bic: string, name: string}>;
+    banks: Array<{ bic: string; name: string }>;
     total: number;
     page: number;
     pageSize: number;
   }> {
     await this.fetchAndCacheRussianBanks();
-    
-    let query = 'SELECT bic, name FROM russian_banks';
-    let countQuery = 'SELECT COUNT(*) FROM russian_banks';
+
+    let query = "SELECT bic, name FROM russian_banks";
+    let countQuery = "SELECT COUNT(*) FROM russian_banks";
     const params: any[] = [];
-    
+
     if (searchTerm) {
       const searchCondition = `
         WHERE LOWER(name) LIKE LOWER($1) 
@@ -378,21 +419,26 @@ export class AccountService {
       countQuery += searchCondition;
       params.push(`%${searchTerm}%`);
     }
-    
+
     // Добавляем сортировку и пагинацию
-    query += ` ORDER BY name LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += ` ORDER BY name LIMIT $${params.length + 1} OFFSET $${
+      params.length + 2
+    }`;
     params.push(pageSize, (page - 1) * pageSize);
-    
+
     const [banksResult, countResult] = await Promise.all([
-      pool.query<{bic: string, name: string}>(query, params),
-      pool.query<{count: string}>(countQuery, params.slice(0, searchTerm ? 1 : 0))
+      pool.query<{ bic: string; name: string }>(query, params),
+      pool.query<{ count: string }>(
+        countQuery,
+        params.slice(0, searchTerm ? 1 : 0)
+      ),
     ]);
-    
+
     return {
       banks: banksResult.rows,
-      total: parseInt(countResult.rows[0]?.count || '0', 10),
+      total: parseInt(countResult.rows[0]?.count || "0", 10),
       page,
-      pageSize
+      pageSize,
     };
   }
 
