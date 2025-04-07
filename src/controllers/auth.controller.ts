@@ -93,7 +93,7 @@ export class AuthController {
         return;
       }
 
-      res.json({ user });
+      res.json(user);
     } catch (error) {
       res.status(500).json({ error: (error as { message: string }).message });
     }

@@ -51,7 +51,6 @@ export class AuthService {
 
   static async refresh(refreshToken: string): Promise<ITokens> {
     try {
-      console.log(refreshToken)
       const { userId } = TokenService.verifyRefreshToken(refreshToken);
       
       return TokenService.generateTokens({ userId });
