@@ -74,7 +74,10 @@ export const accountSchemas = {
     account_name: Joi.string().min(3).max(100).required(),
     type: accountType,
     plan: plan,
-    interest_rate: interestRate
+    interest_rate: interestRate,
+    is_salary: Joi.boolean()
+      .default(false)
+      .description('Является ли счет зарплатным')
   }),
 
   updateAccount: Joi.object({
@@ -84,7 +87,8 @@ export const accountSchemas = {
     account_name: Joi.string().min(3).max(100).required(),
     type: Joi.string().valid('deposit', 'savings', 'investment', 'credit'),
     plan: plan,
-    interest_rate: interestRate
+    interest_rate: interestRate,
+    is_salary: Joi.boolean().description('Является ли счет зарплатным')
   }).min(1),
 
   getAccounts: Joi.object({

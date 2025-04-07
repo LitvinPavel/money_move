@@ -15,6 +15,7 @@ export interface IAccount {
   balance: number;
   currency: string;
   created_at: Date;
+  is_salary: boolean;
 }
 
 export interface ICreateAccount {
@@ -25,6 +26,7 @@ export interface ICreateAccount {
   type: AccountType;
   plan?: number;
   interest_rate?: number | null;
+  is_salary?: boolean;
 }
 
 export interface IUpdateAccount {
@@ -35,6 +37,7 @@ export interface IUpdateAccount {
   type?: AccountType;
   plan?: number;
   interest_rate?: number | null;
+  is_salary?: boolean;
 }
 
 export interface IDeleteAccount {

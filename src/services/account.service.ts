@@ -130,7 +130,8 @@ export class AccountService {
       bank_bic,
       type,
       plan = 0,
-      interest_rate = null
+      interest_rate = null,
+      is_salary = false
     } = data;
     
     // Получаем название банка по БИК
@@ -138,10 +139,10 @@ export class AccountService {
     
     const { rows } = await pool.query<IAccount>(
       `INSERT INTO bank_accounts 
-       (user_id, account_number, balance, currency, account_name, bank_bic, bank_name, type, plan, interest_rate) 
-       VALUES ($1, generate_account_number(), $2, $3, $4, $5, $6, $7, $8, $9) 
+       (user_id, account_number, balance, currency, account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary) 
+       VALUES ($1, generate_account_number(), $2, $3, $4, $5, $6, $7, $8, $9, $10) 
        RETURNING id, account_number, balance, currency, account_name, bank_bic, bank_name,
-                 type, plan, interest_rate, created_at`,
+                 type, plan, interest_rate, is_salary, created_at`,
       [
         userId, 
         initialBalance, 
@@ -151,7 +152,8 @@ export class AccountService {
         bank.name,
         type,
         plan,
-        type === 'deposit' ? null : interest_rate
+        type === 'deposit' ? null : interest_rate,
+        is_salary
       ]
     );
     return rows[0];
@@ -189,6 +191,13 @@ export class AccountService {
     const setClauses: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
+
+    // Добавляем обработку is_salary
+    if (updateData.is_salary !== undefined) {
+      setClauses.push(`is_salary = $${paramIndex}`);
+      values.push(updateData.is_salary);
+      paramIndex++;
+    }
   
     if (updateData.currency !== undefined) {
       setClauses.push(`currency = $${paramIndex}`);
@@ -245,7 +254,7 @@ export class AccountService {
        SET ${setClauses.join(', ')}, updated_at = NOW()
        WHERE id = $${paramIndex}
        RETURNING id, account_number AS "accountNumber", balance, currency, 
-                 account_name, bank_bic, bank_name, type, plan, interest_rate, created_at AS "createdAt"`,
+                 account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary, created_at AS "createdAt"`,
       values
     );
   
@@ -261,7 +270,7 @@ export class AccountService {
   ): Promise<IAccount[]> {
     let query = `
       SELECT id, account_number, balance, currency, 
-             account_name, bank_bic, bank_name, type, plan, interest_rate
+             account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary
       FROM bank_accounts 
       WHERE user_id = $1
     `;
