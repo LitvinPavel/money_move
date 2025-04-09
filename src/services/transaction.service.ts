@@ -382,13 +382,13 @@ export class TransactionService {
           t.updated_at,
           t.is_debt,
           t.bank_name,
-          ba.account_number,
+          ba.account_name,
           ba.currency AS account_currency,
           CASE 
-            WHEN t.type = 'transfer_out' THEN a2.account_number
-            WHEN t.type = 'transfer_in' THEN a2.account_number
+            WHEN t.type = 'transfer_out' THEN a2.account_name
+            WHEN t.type = 'transfer_in' THEN a2.account_name
             ELSE NULL
-          END AS related_account_number,
+          END AS related_account_name,
           CASE 
             WHEN t.type = 'transfer_out' THEN a2.bank_name
             WHEN t.type = 'transfer_in' THEN a2.bank_name

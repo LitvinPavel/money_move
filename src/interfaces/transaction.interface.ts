@@ -43,9 +43,9 @@ export interface ITransactionHistory {
   created_at: Date;
   is_debt?: boolean;
   bank_name?: string;
-  account_number: string;
+  account_name: string;
   account_currency: string;
-  related_account_number?: string;
+  related_account_name?: string;
 }
 
 export interface ITransactionHistoryOptions {
