@@ -453,7 +453,7 @@ private async getLastWorkDayBefore(
     effective_from: Date
   ): Promise<ISalary> {
     try {
-      const result = await pool.query<ISalary>(
+      const result = await pool.query(
         `INSERT INTO salaries (user_id, base_salary, effective_from)
          VALUES ($1, $2, $3)
          RETURNING *`,
@@ -464,7 +464,7 @@ private async getLastWorkDayBefore(
         throw new Error("Failed to create salary record");
       }
 
-      return result.rows[0];
+      return { ...result.rows[0], base_salary: parseFloat(result.rows[0].base_salary) };
     } catch (error) {
       console.error("Error in setSalary:", error);
       throw new Error("Database operation failed");
@@ -519,14 +519,18 @@ private async getLastWorkDayBefore(
   // Получение истории окладов
   async getSalaryHistory(userId: number): Promise<ISalary[]> {
     try {
-      const result = await pool.query<ISalary>(
+      const result = await pool.query(
         `SELECT * FROM salaries 
          WHERE user_id = $1
          ORDER BY effective_from DESC`,
         [userId]
       );
 
-      return result.rows;
+      // Явное преобразование типов
+      return result.rows.map(row => ({
+        ...row,
+        base_salary: parseFloat(row.base_salary)
+      }));
     } catch (error) {
       console.error("Error in getSalaryHistory:", error);
       throw new Error("Database operation failed");
