@@ -6,6 +6,7 @@ export interface ITransaction {
   description?: string;
   created_at: Date;
   updated_at?: Date;
+  date: Date;
   is_debt?: boolean;
   bank_name?: string;
   account_name: string;
@@ -16,6 +17,7 @@ export interface ITransaction {
 export interface IDeposit {
   accountId: number;
   amount: number;
+  date?: Date;
   description?: string;
   is_debt?: boolean;
 }
@@ -23,6 +25,7 @@ export interface IDeposit {
 export interface IWithdrawal {
   accountId: number;
   amount: number;
+  date?: Date;
   description?: string;
   is_debt?: boolean;
 }
@@ -31,6 +34,7 @@ export interface ITransfer {
   fromAccountId: number;
   toAccountId: number;
   amount: number;
+  date?: Date;
   description?: string;
   is_debt?: boolean;
 }
@@ -42,7 +46,7 @@ export interface ITransactionOptions {
   typeFilter?: "deposit" | "withdrawal" | "transfer_out" | "transfer_in";
   startDate?: string;
   endDate?: string;
-  createdAt?: string;
+  date?: string;
   sortField?: string;
   sortDirection?: "ASC" | "DESC";
 }

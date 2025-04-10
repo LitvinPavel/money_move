@@ -25,7 +25,7 @@ export class TransactionController {
       const userId = (req as any).user.userId;
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description, is_debt } = req.body as IDeposit;
+      const { accountId, amount, description, is_debt, date } = req.body as IDeposit;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -40,6 +40,7 @@ export class TransactionController {
         accountId,
         amount,
         description,
+        date,
         is_debt
       });
 
@@ -59,7 +60,7 @@ export class TransactionController {
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description, is_debt } = req.body as IWithdrawal;
+      const { accountId, amount, description, is_debt, date } = req.body as IWithdrawal;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -74,7 +75,8 @@ export class TransactionController {
         accountId,
         amount,
         description,
-        is_debt
+        is_debt,
+        date
       });
 
       res.status(201).json(transaction);
@@ -92,7 +94,7 @@ export class TransactionController {
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { fromAccountId, toAccountId, amount, description, is_debt } =
+      const { fromAccountId, toAccountId, amount, description, is_debt, date } =
         req.body as ITransfer;
 
       const fromBelongs = await this.accountService.accountBelongsToUser(
@@ -114,7 +116,8 @@ export class TransactionController {
         toAccountId,
         amount,
         description,
-        is_debt
+        is_debt,
+        date
       });
 
       res.status(201).json(result);
@@ -179,7 +182,7 @@ export class TransactionController {
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, cursor, limit, type, startDate, endDate, createdAt, sort } =
+      const { accountId, cursor, limit, type, startDate, endDate, date, sort } =
         req.query as any;
 
       let sortField = "created_at";
@@ -202,7 +205,7 @@ export class TransactionController {
         typeFilter: type as any,
         startDate,
         endDate,
-        createdAt,
+        date,
         sortField,
         sortDirection,
       });

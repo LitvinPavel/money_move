@@ -111,14 +111,16 @@ export const transactionSchemas = {
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
-    is_debt: Joi.boolean().default(false)
+    is_debt: Joi.boolean().default(false),
+    date: Joi.string().isoDate(),
   }),
 
   withdrawal: Joi.object({
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
-    is_debt: Joi.boolean().default(false)
+    is_debt: Joi.boolean().default(false),
+    date: Joi.string().isoDate(),
   }),
 
   transfer: Joi.object({
@@ -126,13 +128,15 @@ export const transactionSchemas = {
     toAccountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
     description: Joi.string().max(255),
-    is_debt: Joi.boolean().default(false)
+    is_debt: Joi.boolean().default(false),
+    date: Joi.string().isoDate(),
   }),
 
   updateTransaction: Joi.object({
     description: Joi.string().trim().max(500).optional(),
     status: Joi.string().valid('pending', 'completed', 'failed', 'cancelled').optional(),
     is_debt: Joi.boolean().optional(),
+    date: Joi.string().isoDate(),
   }).min(1).message('At least one field must be provided for update'),
 
   history: Joi.object({
@@ -148,7 +152,7 @@ export const transactionSchemas = {
       ),
     startDate: Joi.string().isoDate(),
     endDate: Joi.string().isoDate(),
-    createdAt: Joi.string().isoDate(),
+    date: Joi.string().isoDate(),
     sort: Joi.string()
       .pattern(/^-?(created_at|amount|type)$/)
       .default("-created_at"),

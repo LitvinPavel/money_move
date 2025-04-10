@@ -52,6 +52,7 @@ CREATE TABLE transactions (
   related_transaction_id INTEGER REFERENCES transactions(id),
   amount DECIMAL(15, 2) NOT NULL CHECK (amount > 0),
   bank_name VARCHAR(255),
+  account_name VARCHAR(255),
   type VARCHAR(20) NOT NULL CHECK (type IN (
     'deposit', 
     'withdrawal', 
@@ -66,6 +67,7 @@ CREATE TABLE transactions (
   )),
   is_debt BOOLEAN DEFAULT FALSE,
   description TEXT,
+  date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   

@@ -24,15 +24,16 @@ export class TransactionService {
         rows: [transaction],
       } = await pool.query<ITransaction>(
         `INSERT INTO transactions 
-       (account_id, amount, type, description, bank_name, is_debt) 
-       VALUES ($1, $2, 'deposit', $3, $4, $5)
-       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
+       (account_id, amount, type, description, bank_name, is_debt, date) 
+       VALUES ($1, $2, 'deposit', $3, $4, $5, $6)
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         [
           data.accountId,
           data.amount,
           data.description,
           account.bank_name,
           data.is_debt || false,
+          data.date || new Date(), // Use provided date or current date
         ]
       );
 
@@ -88,15 +89,16 @@ export class TransactionService {
         rows: [transaction],
       } = await pool.query<ITransaction>(
         `INSERT INTO transactions 
-       (account_id, amount, type, description, bank_name, is_debt) 
-       VALUES ($1, $2, 'withdrawal', $3, $4, $5)
-       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
+       (account_id, amount, type, description, bank_name, is_debt, date) 
+       VALUES ($1, $2, 'withdrawal', $3, $4, $5, $6)
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         [
           data.accountId,
           data.amount,
           data.description,
           account.bank_name,
           data.is_debt || false,
+          data.date || new Date(), // Use provided date or current date
         ]
       );
 
@@ -152,14 +154,16 @@ export class TransactionService {
         throw new Error("Currency mismatch");
       }
 
+      const transactionDate = data.date || new Date();
+
       // Создаем исходящую транзакцию
       const {
         rows: [outTransaction],
       } = await pool.query<ITransaction>(
         `INSERT INTO transactions 
-       (account_id, related_account_id, amount, type, description, bank_name, is_debt) 
-       VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6)
-       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
+       (account_id, related_account_id, amount, type, description, bank_name, is_debt, date) 
+       VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6, $7)
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         [
           data.fromAccountId,
           data.toAccountId,
@@ -167,6 +171,7 @@ export class TransactionService {
           data.description,
           fromAccount.bank_name,
           data.is_debt || false,
+          transactionDate,
         ]
       );
 
@@ -175,9 +180,9 @@ export class TransactionService {
         rows: [inTransaction],
       } = await pool.query<ITransaction>(
         `INSERT INTO transactions 
-       (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name, is_debt) 
-       VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false)  // is_debt всегда false для входящего перевода
-       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
+       (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name, is_debt, date) 
+       VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false, $7)  // is_debt всегда false для входящего перевода
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         [
           data.toAccountId,
           data.fromAccountId,
@@ -185,6 +190,7 @@ export class TransactionService {
           data.amount,
           data.description,
           toAccount.bank_name,
+          transactionDate,
         ]
       );
 
@@ -349,112 +355,114 @@ export class TransactionService {
       typeFilter,
       startDate,
       endDate,
-      createdAt,
-      sortField = "created_at",
+      date,
+      sortField = "date",
       sortDirection = "DESC",
     } = options;
-
-    // Валидация параметров сортировки
-    const validSortFields = ["created_at", "amount", "type"];
+  
+    // Validate sort parameters
+    const validSortFields = ["date", "amount", "type"];
     const validSortDirections = ["ASC", "DESC"];
-
+  
     const effectiveSortField = validSortFields.includes(sortField)
       ? sortField
-      : "created_at";
+      : "date";
     const effectiveSortDirection = validSortDirections.includes(sortDirection)
       ? sortDirection
       : "DESC";
-
-    // Базовый запрос
-    const query: {
-      text: string;
-      values: any[];
-    } = {
-      text: `
-        SELECT 
-          t.id,
-          t.amount,
-          t.type,
-          t.status,
-          t.description,
-          t.created_at,
-          t.updated_at,
-          t.is_debt,
-          t.bank_name,
-          ba.account_name,
-          CASE 
-            WHEN t.type = 'transfer_out' THEN a2.account_name
-            WHEN t.type = 'transfer_in' THEN a2.account_name
-            ELSE NULL
-          END AS related_account_name,
-          CASE 
-            WHEN t.type = 'transfer_out' THEN a2.bank_name
-            WHEN t.type = 'transfer_in' THEN a2.bank_name
-            ELSE NULL
-          END AS related_bank_name
-        FROM transactions t
-        JOIN bank_accounts ba ON t.account_id = ba.id
-        LEFT JOIN bank_accounts a2 ON t.related_account_id = a2.id
-        WHERE ba.user_id = $1
-      `,
-      values: [userId],
-    };
-
-    // Добавляем условия фильтрации
+  
+    // Base query
+    let queryText = `
+      SELECT 
+        t.id,
+        t.amount,
+        t.type,
+        t.status,
+        t.description,
+        t.created_at,
+        t.updated_at,
+        t.is_debt,
+        t.bank_name,
+        t.date,
+        ba.account_name,
+        CASE 
+          WHEN t.type = 'transfer_out' THEN a2.account_name
+          WHEN t.type = 'transfer_in' THEN a2.account_name
+          ELSE NULL
+        END AS related_account_name,
+        CASE 
+          WHEN t.type = 'transfer_out' THEN a2.bank_name
+          WHEN t.type = 'transfer_in' THEN a2.bank_name
+          ELSE NULL
+        END AS related_bank_name
+      FROM transactions t
+      JOIN bank_accounts ba ON t.account_id = ba.id
+      LEFT JOIN bank_accounts a2 ON t.related_account_id = a2.id
+      WHERE ba.user_id = $1
+    `;
+    const queryValues: any[] = [userId];
+    let paramCounter = 2; // Start from $2 since $1 is used for userId
+  
+    // Add filtering conditions
     if (accountId) {
-      query.text += ` AND t.account_id = $${query.values.length + 1}`;
-      query.values.push(accountId);
+      queryText += ` AND t.account_id = $${paramCounter}`;
+      queryValues.push(accountId);
+      paramCounter++;
     }
-
-    // Обработка курсора для пагинации
+  
+    // Cursor pagination
     if (cursor) {
       const operator = effectiveSortDirection === "DESC" ? "<" : ">";
-      query.text += ` AND t.${effectiveSortField} ${operator} $${
-        query.values.length + 1
-      }`;
-      query.values.push(
+      queryText += ` AND t.${effectiveSortField} ${operator} $${paramCounter}`;
+      queryValues.push(
         effectiveSortField === "amount" ? parseFloat(cursor as string) : cursor
       );
+      paramCounter++;
     }
-
-    // Фильтрация по типу транзакции
+  
+    // Transaction type filter
     if (typeFilter) {
-      query.text += ` AND t.type = $${query.values.length + 1}`;
-      query.values.push(typeFilter);
+      queryText += ` AND t.type = $${paramCounter}`;
+      queryValues.push(typeFilter);
+      paramCounter++;
     }
-
-    // Фильтрация по дате создания
-    if (createdAt) {
-      const date = new Date(createdAt);
-      const nextDay = new Date(date);
-      nextDay.setDate(date.getDate() + 1);
-
-      query.text += ` AND t.created_at >= $${
-        query.values.length + 1
-      } AND t.created_at < $${query.values.length + 2}`;
-      query.values.push(date.toISOString());
-      query.values.push(nextDay.toISOString());
+  
+    // Date filtering
+    if (date) {
+      const dateObj = new Date(date);
+      const nextDay = new Date(dateObj);
+      nextDay.setDate(dateObj.getDate() + 1);
+  
+      queryText += ` AND t.date >= $${paramCounter} AND t.date < $${paramCounter + 1}`;
+      queryValues.push(dateObj.toISOString());
+      queryValues.push(nextDay.toISOString());
+      paramCounter += 2;
     } else {
       if (startDate) {
-        query.text += ` AND t.created_at >= $${query.values.length + 1}`;
-        query.values.push(new Date(startDate).toISOString());
+        queryText += ` AND t.date >= $${paramCounter}`;
+        queryValues.push(new Date(startDate).toISOString());
+        paramCounter++;
       }
       if (endDate) {
         const endDateObj = new Date(endDate);
-        endDateObj.setDate(endDateObj.getDate() + 1); // Добавляем 1 день, чтобы включить весь endDate
-        query.text += ` AND t.created_at < $${query.values.length + 1}`;
-        query.values.push(endDateObj.toISOString());
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        queryText += ` AND t.date < $${paramCounter}`;
+        queryValues.push(endDateObj.toISOString());
+        paramCounter++;
       }
     }
-
-    // Добавляем сортировку и лимит
-    query.text += ` ORDER BY t.${effectiveSortField} ${effectiveSortDirection}`;
-    query.text += ` LIMIT $${query.values.length + 1}`;
-    query.values.push(Math.min(limit, 100));
-
-    // Выполняем запрос
-    const { rows } = await pool.query(query);
-    // Явное преобразование типов
+  
+    // Add sorting and limit
+    queryText += ` ORDER BY t.${effectiveSortField} ${effectiveSortDirection}`;
+    queryText += ` LIMIT $${paramCounter}`;
+    queryValues.push(Math.min(limit, 100));
+  
+    // Execute query
+    const { rows } = await pool.query({
+      text: queryText,
+      values: queryValues,
+    });
+  
     return rows.map((row) => ({
       ...row,
       id: parseInt(row.id, 10),
