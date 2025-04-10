@@ -327,7 +327,7 @@ export class AccountService {
         ...row,
         id: parseInt(row.id, 10),
         balance: parseFloat(row.balance),
-        plan: parseInt(row.plan, 10),
+        plan: parseFloat(row.plan),
         debt: parseInt(row.debt, 10),
         interest_rate: row.interest_rate !== null ? parseFloat(row.interest_rate) : null
       }));

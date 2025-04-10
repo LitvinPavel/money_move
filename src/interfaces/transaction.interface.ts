@@ -1,8 +1,5 @@
 export interface ITransaction {
   id: number;
-  account_id: number;
-  related_account_id?: number;
-  related_transaction_id?: number;
   amount: number;
   type: "deposit" | "withdrawal" | "transfer_out" | "transfer_in";
   status: string;
@@ -10,6 +7,10 @@ export interface ITransaction {
   created_at: Date;
   updated_at?: Date;
   is_debt?: boolean;
+  bank_name?: string;
+  account_name: string;
+  related_account_name?: string;
+  related_bank_name?: string;
 }
 
 export interface IDeposit {
@@ -34,21 +35,7 @@ export interface ITransfer {
   is_debt?: boolean;
 }
 
-export interface ITransactionHistory {
-  id: number;
-  amount: number;
-  type: string;
-  status: string;
-  description?: string;
-  created_at: Date;
-  is_debt?: boolean;
-  bank_name?: string;
-  account_name: string;
-  account_currency: string;
-  related_account_name?: string;
-}
-
-export interface ITransactionHistoryOptions {
+export interface ITransactionOptions {
   accountId?: number;
   cursor?: string | number;
   limit?: number;

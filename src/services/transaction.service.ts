@@ -3,8 +3,7 @@ import {
   IDeposit,
   IWithdrawal,
   ITransfer,
-  ITransactionHistory,
-  ITransactionHistoryOptions,
+  ITransactionOptions,
 } from "../interfaces/transaction.interface";
 import pool from "../db";
 
@@ -27,7 +26,7 @@ export class TransactionService {
         `INSERT INTO transactions 
        (account_id, amount, type, description, bank_name, is_debt) 
        VALUES ($1, $2, 'deposit', $3, $4, $5)
-       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
         [
           data.accountId,
           data.amount,
@@ -91,7 +90,7 @@ export class TransactionService {
         `INSERT INTO transactions 
        (account_id, amount, type, description, bank_name, is_debt) 
        VALUES ($1, $2, 'withdrawal', $3, $4, $5)
-       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
         [
           data.accountId,
           data.amount,
@@ -160,7 +159,7 @@ export class TransactionService {
         `INSERT INTO transactions 
        (account_id, related_account_id, amount, type, description, bank_name, is_debt) 
        VALUES ($1, $2, $3, 'transfer_out', $4, $5, $6)
-       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
         [
           data.fromAccountId,
           data.toAccountId,
@@ -178,7 +177,7 @@ export class TransactionService {
         `INSERT INTO transactions 
        (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name, is_debt) 
        VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false)  // is_debt всегда false для входящего перевода
-       RETURNING id, amount, type, status, description, created_at, bank_name, is_debt`,
+       RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
         [
           data.toAccountId,
           data.fromAccountId,
@@ -217,7 +216,8 @@ export class TransactionService {
       return {
         outTransaction: {
           ...outTransaction,
-          related_transaction_id: inTransaction.id,
+          related_account_name: inTransaction.account_name,
+          related_bank_name: inTransaction.bank_name
         },
         inTransaction,
       };
@@ -312,8 +312,7 @@ export class TransactionService {
         `UPDATE transactions
          SET ${setClause}, updated_at = NOW()
          WHERE id = $${paramIndex}
-         RETURNING id, amount, type, status, description, 
-                   created_at, updated_at, bank_name, is_debt`,
+         RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
         values
       );
 
@@ -341,8 +340,8 @@ export class TransactionService {
 
   async getHistory(
     userId: number,
-    options: ITransactionHistoryOptions
-  ): Promise<ITransactionHistory[]> {
+    options: ITransactionOptions
+  ): Promise<ITransaction[]> {
     const {
       accountId,
       cursor,
@@ -383,7 +382,6 @@ export class TransactionService {
           t.is_debt,
           t.bank_name,
           ba.account_name,
-          ba.currency AS account_currency,
           CASE 
             WHEN t.type = 'transfer_out' THEN a2.account_name
             WHEN t.type = 'transfer_in' THEN a2.account_name

@@ -16,6 +16,10 @@ CREATE TABLE refresh_tokens (
     expires_at TIMESTAMP NOT NULL
 );
 
+ALTER TABLE bank_accounts
+ALTER COLUMN plan SET DATA TYPE DECIMAL(5, 2) NOT NULL,
+ALTER COLUMN plan SET DEFAULT 0.00;
+
 CREATE TABLE bank_accounts (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -24,7 +28,7 @@ CREATE TABLE bank_accounts (
     bank_name VARCHAR(255) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('deposit', 'savings', 'investment', 'credit')),
     balance DECIMAL(15, 2) DEFAULT 0.00,
-    plan DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    plan DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
     debt DECIMAL(15, 2) NOT NULL DEFAULT 0,
     is_salary BOOLEAN DEFAULT FALSE,
     interest_rate DECIMAL(5, 2),
