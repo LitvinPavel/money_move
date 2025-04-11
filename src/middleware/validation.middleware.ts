@@ -110,7 +110,7 @@ export const transactionSchemas = {
   deposit: Joi.object({
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
-    description: Joi.string().max(255),
+    description: Joi.string().max(255).optional(),
     is_debt: Joi.boolean().default(false),
     date: Joi.string().isoDate(),
   }),
@@ -118,7 +118,7 @@ export const transactionSchemas = {
   withdrawal: Joi.object({
     accountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
-    description: Joi.string().max(255),
+    description: Joi.string().max(255).optional(),
     is_debt: Joi.boolean().default(false),
     date: Joi.string().isoDate(),
   }),
@@ -127,7 +127,7 @@ export const transactionSchemas = {
     fromAccountId: Joi.number().integer().positive().required(),
     toAccountId: Joi.number().integer().positive().required(),
     amount: Joi.number().positive().required(),
-    description: Joi.string().max(255),
+    description: Joi.string().max(255).optional(),
     is_debt: Joi.boolean().default(false),
     date: Joi.string().isoDate(),
   }),
