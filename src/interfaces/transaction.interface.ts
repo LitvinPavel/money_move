@@ -58,3 +58,23 @@ export interface ITransactionPagination {
   sortField: string;
   sortDirection: "ASC" | "DESC";
 }
+
+export interface IBalanceSummary {
+  totalBalance: number;
+  totalDebt: number;
+  netBalance: number;
+  byAccount: Array<{
+    accountId: number;
+    accountName: string;
+    bankName: string;
+    balance: number;
+    debt: number;
+    netBalance: number;
+  }>;
+}
+
+export interface IBalanceQueryParams {
+  accountId?: number;
+  startDate?: string;
+  endDate?: string;
+}

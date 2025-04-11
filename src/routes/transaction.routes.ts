@@ -37,6 +37,12 @@ router.put(
 );
 
 router.get(
+  "/balance",
+  validateQuery(transactionSchemas.getBalanceSummary),
+  transactionController.getBalanceSummary
+);
+
+router.get(
   "/history",
   validateQuery(transactionSchemas.history),
   transactionController.getHistory

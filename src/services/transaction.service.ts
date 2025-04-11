@@ -58,7 +58,8 @@ export class TransactionService {
       }
 
       await pool.query("COMMIT");
-      return transaction;
+
+      return { ...transaction,  amount: parseFloat(transaction.amount.toString())};
     } catch (error) {
       await pool.query("ROLLBACK");
       throw error;
@@ -112,7 +113,7 @@ export class TransactionService {
       );
 
       await pool.query("COMMIT");
-      return transaction;
+      return { ...transaction,  amount: parseFloat(transaction.amount.toString())};
     } catch (error) {
       await pool.query("ROLLBACK");
       throw error;
@@ -222,10 +223,14 @@ export class TransactionService {
       return {
         outTransaction: {
           ...outTransaction,
+          amount: parseFloat(outTransaction.amount.toString()),
           related_account_name: inTransaction.account_name,
           related_bank_name: inTransaction.bank_name
         },
-        inTransaction,
+        inTransaction: {
+          ...inTransaction,
+          amount: parseFloat(inTransaction.amount.toString())
+        },
       };
     } catch (error) {
       await pool.query("ROLLBACK");
@@ -240,10 +245,11 @@ export class TransactionService {
       description?: string;
       status?: string;
       is_debt?: boolean;
+      date?: Date | string;
     }
   ): Promise<ITransaction> {
     await pool.query("BEGIN");
-
+  
     try {
       // 1. Проверяем существование транзакции и права доступа
       const { rows } = await pool.query<{
@@ -257,13 +263,13 @@ export class TransactionService {
          WHERE t.id = $1 AND ba.user_id = $2`,
         [transactionId, userId]
       );
-
+  
       if (rows.length === 0) {
         throw new Error("Transaction not found or access denied");
       }
-
+  
       const transaction = rows[0];
-
+  
       // 2. Для переводов проверяем доступ к связанной транзакции
       if (
         transaction.type.includes("transfer") &&
@@ -275,42 +281,51 @@ export class TransactionService {
            WHERE t.id = $1 AND ba.user_id = $2`,
           [transaction.related_transaction_id, userId]
         );
-
+  
         if (relatedAccess.rows.length === 0) {
           throw new Error("No access to related transaction");
         }
       }
-
+  
       // 3. Подготавливаем поля для обновления
       const setClauses: string[] = [];
       const values: any[] = [];
       let paramIndex = 1;
-
+  
       if (updateData.description !== undefined) {
         setClauses.push(`description = $${paramIndex}`);
         values.push(updateData.description);
         paramIndex++;
       }
-
+  
       if (updateData.status !== undefined) {
         setClauses.push(`status = $${paramIndex}`);
         values.push(updateData.status);
         paramIndex++;
       }
-
+  
       if (updateData.is_debt !== undefined) {
         setClauses.push(`is_debt = $${paramIndex}`);
         values.push(updateData.is_debt);
         paramIndex++;
       }
-
+  
+      if (updateData.date !== undefined) {
+        const dateValue = updateData.date instanceof Date 
+          ? updateData.date 
+          : new Date(updateData.date);
+        setClauses.push(`date = $${paramIndex}`);
+        values.push(dateValue);
+        paramIndex++;
+      }
+  
       if (setClauses.length === 0) {
         throw new Error("No fields to update");
       }
-
+  
       values.push(transactionId);
       const setClause = setClauses.join(", ");
-
+  
       // 4. Обновляем транзакцию
       const {
         rows: [updatedTransaction],
@@ -318,26 +333,47 @@ export class TransactionService {
         `UPDATE transactions
          SET ${setClause}, updated_at = NOW()
          WHERE id = $${paramIndex}
-         RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name`,
+         RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         values
       );
-
-      // 5. Для переводов обновляем связанную транзакцию (только статус)
+  
+      // 5. Для переводов обновляем связанную транзакцию (статус и дату)
       if (
         transaction.type.includes("transfer") &&
-        transaction.related_transaction_id &&
-        updateData.status
+        transaction.related_transaction_id
       ) {
-        await pool.query(
-          `UPDATE transactions
-           SET status = $1, updated_at = NOW()
-           WHERE id = $2`,
-          [updateData.status, transaction.related_transaction_id]
-        );
+        const relatedUpdateClauses: string[] = [];
+        const relatedUpdateValues: any[] = [];
+        let relatedParamIndex = 1;
+  
+        if (updateData.status) {
+          relatedUpdateClauses.push(`status = $${relatedParamIndex}`);
+          relatedUpdateValues.push(updateData.status);
+          relatedParamIndex++;
+        }
+  
+        if (updateData.date) {
+          const dateValue = updateData.date instanceof Date 
+            ? updateData.date 
+            : new Date(updateData.date);
+          relatedUpdateClauses.push(`date = $${relatedParamIndex}`);
+          relatedUpdateValues.push(dateValue);
+          relatedParamIndex++;
+        }
+  
+        if (relatedUpdateClauses.length > 0) {
+          relatedUpdateValues.push(transaction.related_transaction_id);
+          await pool.query(
+            `UPDATE transactions
+             SET ${relatedUpdateClauses.join(", ")}, updated_at = NOW()
+             WHERE id = $${relatedParamIndex}`,
+            relatedUpdateValues
+          );
+        }
       }
-
+  
       await pool.query("COMMIT");
-      return updatedTransaction;
+      return { ...updatedTransaction, amount: parseFloat(updatedTransaction.amount.toString()) };
     } catch (error) {
       await pool.query("ROLLBACK");
       throw error;
@@ -468,6 +504,115 @@ export class TransactionService {
       id: parseInt(row.id, 10),
       amount: parseFloat(row.amount),
     }));
+  }
+
+  async getBalanceSummary(
+    userId: number,
+    options: {
+      accountId?: number;
+      startDate?: string;
+      endDate?: string;
+    } = {}
+  ): Promise<{
+    totalBalance: number;
+    totalDebt: number;
+    netBalance: number;
+    byAccount: Array<{
+      accountId: number;
+      accountName: string;
+      bankName: string;
+      balance: number;
+      debt: number;
+      netBalance: number;
+    }>;
+  }> {
+    const { accountId, startDate, endDate } = options;
+  
+    // Базовый запрос для получения информации о счетах
+    let queryText = `
+      SELECT 
+        ba.id as account_id,
+        ba.account_name,
+        ba.bank_name,
+        ba.balance,
+        ba.debt,
+        ba.balance - ba.debt as net_balance
+      FROM bank_accounts ba
+      WHERE ba.user_id = $1
+    `;
+    const queryParams: any[] = [userId];
+  
+    if (accountId) {
+      queryText += ` AND ba.id = $2`;
+      queryParams.push(accountId);
+    }
+  
+    const { rows: accounts } = await pool.query(queryText, queryParams);
+    
+    // Если нужна фильтрация по дате, вычисляем изменения баланса за период
+    if (startDate || endDate) {
+      for (const account of accounts) {
+        let transactionQuery = `
+          SELECT 
+            SUM(CASE 
+              WHEN type = 'deposit' THEN amount
+              WHEN type = 'transfer_in' THEN amount
+              WHEN type = 'withdrawal' THEN -amount
+              WHEN type = 'transfer_out' THEN -amount
+              ELSE 0
+            END) as balance_change
+          FROM transactions t
+          WHERE t.account_id = $1
+        `;
+        const transactionParams: any[] = [account.account_id];
+  
+        let paramIndex = 2;
+        if (startDate) {
+          transactionQuery += ` AND t.date >= $${paramIndex}`;
+          transactionParams.push(new Date(startDate).toISOString());
+          paramIndex++;
+        }
+        if (endDate) {
+          const endDateObj = new Date(endDate);
+          endDateObj.setDate(endDateObj.getDate() + 1);
+          transactionQuery += ` AND t.date < $${paramIndex}`;
+          transactionParams.push(endDateObj.toISOString());
+        }
+        
+        const { rows: [balanceChange] } = await pool.query(transactionQuery, transactionParams);
+        
+        // Корректируем баланс на основе транзакций за период
+        if (balanceChange && balanceChange.balance_change) {
+          account.balance = parseFloat(balanceChange.balance_change);
+          // Для периода считаем debt = 0, так как историю долга сложно отследить
+          account.debt = 0;
+          account.net_balance = account.balance;
+        } else {
+          account.balance = 0;
+          account.debt = 0;
+          account.net_balance = 0;
+        }
+      }
+    }
+
+    // Рассчитываем итоговые значения
+    const totalBalance = parseFloat(accounts.reduce((sum, acc) => sum + acc.balance, 0));
+    const totalDebt = parseFloat(accounts.reduce((sum, acc) => sum + acc.debt, 0));
+    const netBalance = totalBalance - totalDebt;
+  
+    return {
+      totalBalance,
+      totalDebt,
+      netBalance,
+      byAccount: accounts.map(acc => ({
+        accountId: acc.account_id,
+        accountName: acc.account_name,
+        bankName: acc.bank_name,
+        balance: parseFloat(acc.balance),
+        debt: parseFloat(acc.debt),
+        netBalance: parseFloat(acc.net_balance),
+      })),
+    };
   }
 
   async deleteTransaction(

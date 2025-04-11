@@ -158,6 +158,12 @@ export const transactionSchemas = {
       .default("-created_at"),
   }).with("endDate", "startDate"),
 
+  getBalanceSummary: Joi.object({
+    accountId: Joi.number().integer().positive(),
+    startDate: Joi.date().iso(),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')),
+  }),
+
   deleteTransaction: Joi.object({
     transactionId: Joi.number().integer().positive().required(),
   }),

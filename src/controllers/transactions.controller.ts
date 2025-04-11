@@ -6,6 +6,8 @@ import {
   IWithdrawal,
   ITransfer,
   ITransactionPagination,
+  IBalanceSummary,
+  IBalanceQueryParams,
 } from "../interfaces/transaction.interface";
 
 export class TransactionController {
@@ -17,15 +19,13 @@ export class TransactionController {
     this.accountService = new AccountService();
   }
 
-  public deposit = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
+  public deposit = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).user.userId;
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description, is_debt, date } = req.body as IDeposit;
+      const { accountId, amount, description, is_debt, date } =
+        req.body as IDeposit;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -41,7 +41,7 @@ export class TransactionController {
         amount,
         description,
         date,
-        is_debt
+        is_debt,
       });
 
       res.status(201).json(transaction);
@@ -51,16 +51,14 @@ export class TransactionController {
     }
   };
 
-  public withdrawal = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
+  public withdrawal = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).user.userId;
 
       if (!userId) throw new Error("Unauthorized");
 
-      const { accountId, amount, description, is_debt, date } = req.body as IWithdrawal;
+      const { accountId, amount, description, is_debt, date } =
+        req.body as IWithdrawal;
 
       const belongs = await this.accountService.accountBelongsToUser(
         accountId,
@@ -76,7 +74,7 @@ export class TransactionController {
         amount,
         description,
         is_debt,
-        date
+        date,
       });
 
       res.status(201).json(transaction);
@@ -85,10 +83,7 @@ export class TransactionController {
     }
   };
 
-  public transfer = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
+  public transfer = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).user.userId;
 
@@ -117,7 +112,7 @@ export class TransactionController {
         amount,
         description,
         is_debt,
-        date
+        date,
       });
 
       res.status(201).json(result);
@@ -139,44 +134,42 @@ export class TransactionController {
       const updateData = req.body;
       // 2. Проверка корректности ID транзакции
       if (isNaN(transactionId)) {
-        res.status(400).json({ error: 'Invalid transaction ID' });
+        res.status(400).json({ error: "Invalid transaction ID" });
         return;
       }
 
-      const updatedTransaction = await this.transactionService.updateTransaction(
-        userId,
-        transactionId,
-        updateData
-      );
-      
+      const updatedTransaction =
+        await this.transactionService.updateTransaction(
+          userId,
+          transactionId,
+          updateData
+        );
+
       res.status(200).json({
-        message: 'Transaction updated successfully',
+        message: "Transaction updated successfully",
         transaction: updatedTransaction,
       });
     } catch (error) {
-      const { message } = (error as { message: string });
-      if (message === 'Transaction not found or access denied') {
+      const { message } = error as { message: string };
+      if (message === "Transaction not found or access denied") {
         res.status(404).json({ error: message });
         return;
       }
-      if (message === 'No access to related transaction') {
+      if (message === "No access to related transaction") {
         res.status(403).json({ error: message });
         return;
       }
-      if (message === 'No fields to update') {
+      if (message === "No fields to update") {
         res.status(400).json({ error: message });
         return;
       }
 
-      console.error('Error updating transaction:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      console.error("Error updating transaction:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 
-  public getHistory = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
+  public getHistory = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).user.userId;
 
@@ -234,6 +227,32 @@ export class TransactionController {
         transactions,
         pagination,
       });
+    } catch (error) {
+      res.status(500).json({ error: (error as { message: string }).message });
+    }
+  };
+
+  public getBalanceSummary = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const userId = (req as any).user.userId;
+
+      if (!userId) throw new Error("Unauthorized");
+
+      const { accountId, startDate, endDate } = req.query as any;
+
+      const options: IBalanceQueryParams = {
+        accountId: accountId ? parseInt(accountId as string) : undefined,
+        startDate: startDate as string | undefined,
+        endDate: endDate as string | undefined,
+      };
+
+      const balanceSummary: IBalanceSummary =
+        await this.transactionService.getBalanceSummary(userId, options);
+
+      res.json(balanceSummary);
     } catch (error) {
       res.status(500).json({ error: (error as { message: string }).message });
     }
