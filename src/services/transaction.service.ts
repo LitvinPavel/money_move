@@ -619,24 +619,25 @@ export class TransactionService {
     transactionId: number
   ): Promise<boolean> {
     await pool.query("BEGIN");
-
+  
     try {
       // Получаем полную информацию о транзакции с проверкой прав доступа
       const transactionQuery = await pool.query(
         `SELECT t.id, t.type, t.related_transaction_id, t.account_id, 
-                t.related_account_id, t.amount, t.bank_name, ba.user_id as account_owner
+                t.related_account_id, t.amount, t.bank_name, t.is_debt,
+                ba.user_id as account_owner
          FROM transactions t
          JOIN bank_accounts ba ON t.account_id = ba.id
          WHERE t.id = $1 AND ba.user_id = $2`,
         [transactionId, userId]
       );
-
+  
       if (transactionQuery.rows.length === 0) {
         throw new Error("Transaction not found or access denied");
       }
-
+  
       const transaction = transactionQuery.rows[0];
-
+  
       // Если это перевод, находим связанную транзакцию
       if (
         transaction.type === "transfer_out" ||
@@ -649,25 +650,25 @@ export class TransactionService {
              WHERE id = $1 AND user_id = $2`,
             [transaction.related_account_id, userId]
           );
-
+  
           if (relatedAccountCheck.rows.length === 0) {
             throw new Error("Related account not found or access denied");
           }
         }
-
+  
         // Получаем связанную транзакцию
         const relatedTransaction = await pool.query(
-          `SELECT id, type, account_id, amount, bank_name 
+          `SELECT id, type, account_id, amount, bank_name, is_debt 
            FROM transactions 
            WHERE id = $1 OR related_transaction_id = $1`,
           [transactionId]
         );
-
+  
         // Проверяем, что нашли обе транзакции перевода
         if (relatedTransaction.rows.length !== 2) {
           throw new Error("Could not find both transfer transactions");
         }
-
+  
         // Определяем какая транзакция какая (out или in)
         const outTransaction = relatedTransaction.rows.find(
           (t) => t.type === "transfer_out"
@@ -675,26 +676,27 @@ export class TransactionService {
         const inTransaction = relatedTransaction.rows.find(
           (t) => t.type === "transfer_in"
         );
-
+  
         if (!outTransaction || !inTransaction) {
           throw new Error("Invalid transfer transaction pair");
         }
-
-        // Возвращаем деньги на счета
+  
+        // Возвращаем деньги на счета и корректируем debt
         await pool.query(
           `UPDATE bank_accounts 
-           SET balance = balance + $1 
+           SET balance = balance + $1
+           ${outTransaction.is_debt ? `, debt = debt - $1` : ""}
            WHERE id = $2`,
           [outTransaction.amount, outTransaction.account_id]
         );
-
+  
         await pool.query(
           `UPDATE bank_accounts 
            SET balance = balance - $1 
            WHERE id = $2`,
           [inTransaction.amount, inTransaction.account_id]
         );
-
+  
         // Удаляем обе транзакции
         await pool.query(
           `DELETE FROM transactions 
@@ -702,29 +704,51 @@ export class TransactionService {
           [outTransaction.id, inTransaction.id]
         );
       } else {
-        // Для обычных транзакций возвращаем деньги (если это withdrawal/deposit)
+        // Для обычных транзакций возвращаем деньги и корректируем debt
         if (transaction.type === "withdrawal") {
           await pool.query(
             `UPDATE bank_accounts 
-             SET balance = balance + $1 
+             SET balance = balance + $1
+             ${transaction.is_debt ? `, debt = debt - $1` : ""}
              WHERE id = $2`,
             [transaction.amount, transaction.account_id]
           );
         } else if (transaction.type === "deposit") {
-          await pool.query(
-            `UPDATE bank_accounts 
-             SET balance = balance - $1 
-             WHERE id = $2`,
-            [transaction.amount, transaction.account_id]
-          );
+          // Для депозитов с is_debt уменьшаем debt, иначе просто уменьшаем баланс
+          if (transaction.is_debt) {
+            // Получаем текущий долг для проверки
+            const debtCheck = await pool.query(
+              `SELECT debt FROM bank_accounts WHERE id = $1`,
+              [transaction.account_id]
+            );
+            const currentDebt = parseFloat(debtCheck.rows[0].debt);
+  
+            // Если текущий долг меньше суммы транзакции, корректируем только на величину долга
+            const adjustmentAmount = Math.min(transaction.amount, currentDebt);
+            
+            await pool.query(
+              `UPDATE bank_accounts 
+               SET balance = balance - $1,
+                   debt = debt + $2
+               WHERE id = $3`,
+              [transaction.amount, adjustmentAmount, transaction.account_id]
+            );
+          } else {
+            await pool.query(
+              `UPDATE bank_accounts 
+               SET balance = balance - $1 
+               WHERE id = $2`,
+              [transaction.amount, transaction.account_id]
+            );
+          }
         }
-
+  
         // Удаляем транзакцию
         await pool.query("DELETE FROM transactions WHERE id = $1", [
           transactionId,
         ]);
       }
-
+  
       await pool.query("COMMIT");
       return true;
     } catch (error) {
