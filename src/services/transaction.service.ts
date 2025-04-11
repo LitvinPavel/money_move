@@ -423,18 +423,17 @@ export class TransactionService {
         ba.account_name,
         CASE 
           WHEN t.type = 'transfer_out' THEN a2.account_name
-          WHEN t.type = 'transfer_in' THEN a2.account_name
           ELSE NULL
         END AS related_account_name,
         CASE 
           WHEN t.type = 'transfer_out' THEN a2.bank_name
-          WHEN t.type = 'transfer_in' THEN a2.bank_name
           ELSE NULL
         END AS related_bank_name
       FROM transactions t
       JOIN bank_accounts ba ON t.account_id = ba.id
       LEFT JOIN bank_accounts a2 ON t.related_account_id = a2.id
       WHERE ba.user_id = $1
+      AND t.type != 'transfer_in'
     `;
     const queryValues: any[] = [userId];
     let paramCounter = 2; // Start from $2 since $1 is used for userId
