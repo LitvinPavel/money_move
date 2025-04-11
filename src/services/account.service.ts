@@ -260,6 +260,12 @@ export class AccountService {
       paramIndex++;
     }
 
+    if (updateData.debt !== undefined) {
+      setClauses.push(`debt = $${paramIndex}`);
+      values.push(updateData.debt);
+      paramIndex++;
+    }
+
     if (setClauses.length === 0) {
       throw new Error("No fields to update");
     }
@@ -271,7 +277,7 @@ export class AccountService {
        SET ${setClauses.join(", ")}, updated_at = NOW()
        WHERE id = $${paramIndex}
        RETURNING id, account_number AS "accountNumber", balance, currency, 
-                 account_name, bank_bic, bank_name, type, plan, interest_rate, is_salary, created_at AS "createdAt"`,
+                 account_name, bank_bic, bank_name, type, plan, debt, interest_rate, is_salary, created_at AS "createdAt"`,
       values
     );
 
