@@ -55,7 +55,7 @@ export class AuthController {
       const refreshToken = req.cookies.refreshToken;
       
       if (!refreshToken) {
-        res.status(401).json({ error: 'Refresh token required' });
+        res.status(400).json({ error: 'Refresh token required' });
         return;
       }
 
