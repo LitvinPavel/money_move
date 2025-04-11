@@ -182,7 +182,7 @@ export class TransactionService {
       } = await pool.query<ITransaction>(
         `INSERT INTO transactions 
        (account_id, related_account_id, related_transaction_id, amount, type, description, bank_name, is_debt, date) 
-       VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false, $7)  // is_debt всегда false для входящего перевода
+       VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, false, $7)
        RETURNING id, amount, type, status, description, created_at, updated_at, bank_name, is_debt, account_name, date`,
         [
           data.toAccountId,
