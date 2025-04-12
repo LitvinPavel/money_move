@@ -48,18 +48,19 @@ export class SalaryService {
     userId: number,
     date: Date
   ): Promise<ISalaryCalculationResult> {
-    const [currentSalary, workCalendar, vacations] = await Promise.all([
+    const [currentSalary, workCalendar, vacations, prevVacations] = await Promise.all([
       this.getCurrentSalary(userId, date),
       this.getWorkCalendar(date),
       this.getUserVacations(userId, date),
+      this.getUserVacations(userId, new Date(date.getFullYear(), date.getMonth() - 1, 1)),
     ]);
 
     const { advanceHours, salaryHours, vacationDays } = await this.calculateWorkHours(
       date,
       workCalendar,
-      vacations
+      vacations,
+      prevVacations
     );
-
     const [advanceHourlyRate, salaryHourlyRate, averageHourlyRate] = await Promise.all([
       currentSalary.base_salary / await this.calculateStandardWorkHours(date, workCalendar),
       currentSalary.base_salary / await this.calculateStandardWorkHours(
@@ -68,7 +69,7 @@ export class SalaryService {
       ),
       this.calculateAverageHourlyRate(userId, date),
     ]);
-
+    
     const advanceAmount = advanceHours * advanceHourlyRate;
     const salaryAmount = salaryHours * salaryHourlyRate;
 
@@ -158,7 +159,7 @@ private async getLastWorkDayBefore(
       // Инициализация всех дней как рабочих (0)
       const currentDate = new Date(year, 0, 1);
       while (currentDate.getFullYear() === year) {
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dateStr = currentDate.toLocaleDateString("sv");
         workDaysMap.set(dateStr, 0);
         currentDate.setDate(currentDate.getDate() + 1);
       }
@@ -167,7 +168,7 @@ private async getLastWorkDayBefore(
       currentDate.setFullYear(year, 0, 1);
       while (currentDate.getFullYear() === year) {
         if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
-          const dateStr = currentDate.toISOString().split('T')[0];
+          const dateStr = currentDate.toLocaleDateString("sv");
           workDaysMap.set(dateStr, 1);
         }
         currentDate.setDate(currentDate.getDate() + 1);
@@ -179,7 +180,7 @@ private async getLastWorkDayBefore(
         for (const dayStr of days) {
           const day = dayStr.replace('*', '').replace('+', '');
           const date = new Date(year, monthData.month - 1, parseInt(day));
-          const dateStr = date.toISOString().split('T')[0];
+          const dateStr = date.toLocaleDateString("sv");
           
           if (dayStr.includes('*')) {
             workDaysMap.set(dateStr, 2); // Сокращенный день
@@ -193,14 +194,14 @@ private async getLastWorkDayBefore(
 
       // Обрабатываем переносы рабочих дней
       for (const transition of calendarData.transitions) {
-        const [fromDay, fromMonth] = transition.from.split('.').map(Number);
-        const [toDay, toMonth] = transition.to.split('.').map(Number);
+        const [fromMonth, fromDay] = transition.from.split('.').map(Number);
+        const [toMonth, toDay] = transition.to.split('.').map(Number);
         
         const fromDate = new Date(year, fromMonth - 1, fromDay);
         const toDate = new Date(year, toMonth - 1, toDay);
         
-        const fromDateStr = fromDate.toISOString().split('T')[0];
-        const toDateStr = toDate.toISOString().split('T')[0];
+        const fromDateStr = fromDate.toLocaleDateString("sv");
+        const toDateStr = toDate.toLocaleDateString("sv");
         
         const fromStatus = workDaysMap.get(fromDateStr) || 0;
         workDaysMap.set(toDateStr, fromStatus);
@@ -229,7 +230,7 @@ private async getLastWorkDayBefore(
     
     while (date.getFullYear() === year) {
       const dayOfWeek = date.getDay();
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = date.toLocaleDateString("sv");
       calendar.set(dateStr, dayOfWeek === 0 || dayOfWeek === 6 ? 1 : 0);
       date.setDate(date.getDate() + 1);
     }
@@ -277,19 +278,20 @@ private async getLastWorkDayBefore(
     let totalHours = 0;
     const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
     const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
+    
     for (let day = new Date(monthStart); day <= monthEnd; day.setDate(day.getDate() + 1)) {
       const dayType = await this.getDayType(day, workCalendar);
       if (dayType === 0) totalHours += 8;
       else if (dayType === 2) totalHours += 7;
+      
     }
-
+    
     return totalHours;
   }
 
   // Определение типа дня
   private async getDayType(date: Date, workCalendar: Map<string, number>): Promise<number> {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = date.toLocaleDateString("sv");
     return workCalendar.get(dateStr) ?? (date.getDay() === 0 || date.getDay() === 6 ? 1 : 0);
   }
 
@@ -324,7 +326,8 @@ private async getLastWorkDayBefore(
   private async calculateWorkHours(
     date: Date,
     workCalendar: Map<string, number>,
-    vacations: IVacation[]
+    vacations: IVacation[],
+    prevVacations: IVacation[]
   ): Promise<{ advanceHours: number; salaryHours: number; vacationDays: number }> {
     const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
     const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -354,6 +357,11 @@ private async getLastWorkDayBefore(
     const prevMonthEnd = new Date(date.getFullYear(), date.getMonth(), 0);
 
     for (let day = new Date(prevMonthStart); day <= prevMonthEnd; day.setDate(day.getDate() + 1)) {
+      const isVacationDay = prevVacations.some(v => day >= v.start_date && day <= v.end_date);
+      if (isVacationDay) {
+        continue;
+      }
+
       if (await this.isWorkDay(day, workCalendar)) {
         salaryHours += await this.getDailyWorkHours(day, workCalendar);
       }
@@ -404,8 +412,9 @@ private async getLastWorkDayBefore(
       const salary = salariesResult.rows.find(
         (s) => new Date(s.effective_from) <= monthEnd
       );
-      if (!salary && !latestSalary) continue;
-  
+      const { base_salary } = salary || latestSalary;
+      if (!base_salary) continue;
+      
       const workCalendar = await this.getWorkCalendar(monthStart);
       let monthHours = 0;
   
@@ -418,9 +427,8 @@ private async getLastWorkDayBefore(
           monthHours += await this.getDailyWorkHours(day, workCalendar);
         }
       }
-  
       if (monthHours > 0) {
-        totalEarnings += salary?.base_salary ?? latestSalary.base_salary;
+        totalEarnings += +base_salary;
         totalHours += monthHours;
       }
     }
@@ -428,7 +436,7 @@ private async getLastWorkDayBefore(
     if (totalHours === 0) {
       throw new Error("No work hours found for last 3 months");
     }
-  
+
     return totalEarnings / totalHours;
   }
 
