@@ -383,21 +383,6 @@ private async getLastWorkDayBefore(
   
     // Если есть хотя бы одна запись о зарплате, используем её
     const latestSalary = salariesResult.rows[0];
-    
-    // Если нет зарплат за последние 3 месяца, используем последнюю доступную
-    if (new Date(latestSalary.effective_from) < threeMonthsAgo) {
-      // console.warn(`Using last available salary from ${latestSalary.effective_from} as there are no recent records`);
-      
-      // Рассчитываем рабочие часы для текущего месяца
-      const workCalendar = await this.getWorkCalendar(date);
-      const monthHours = await this.calculateStandardWorkHours(date, workCalendar);
-      
-      if (monthHours === 0) {
-        throw new Error("No work hours found for current month");
-      }
-      
-      return latestSalary.base_salary / monthHours;
-    }
   
     // Стандартный расчёт за последние 3 месяца
     let totalEarnings = 0;
@@ -418,7 +403,7 @@ private async getLastWorkDayBefore(
       // Находим актуальный оклад для этого месяца
       const salary = salariesResult.rows.find(
         (s) => new Date(s.effective_from) <= monthEnd
-      );
+      ) || latestSalary;
       if (!salary) continue;
   
       const workCalendar = await this.getWorkCalendar(monthStart);
