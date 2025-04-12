@@ -336,14 +336,16 @@ private async getLastWorkDayBefore(
 
     // Текущий месяц (аванс)
     for (let day = new Date(monthStart); day <= monthEnd; day.setDate(day.getDate() + 1)) {
+      const _isWorkDay = await this.isWorkDay(day, workCalendar);
       const isVacationDay = vacations.some(v => day >= v.start_date && day <= v.end_date);
-      if (isVacationDay) {
-        vacationDays++;
-        continue;
-      }
-
-      if (await this.isWorkDay(day, workCalendar) && day <= midMonth) {
-        advanceHours += await this.getDailyWorkHours(day, workCalendar);
+      if (_isWorkDay) {
+        if (isVacationDay) {
+          vacationDays++;
+          continue;
+        }
+        if (day <= midMonth) {
+          advanceHours += await this.getDailyWorkHours(day, workCalendar);
+        }
       }
     }
 
