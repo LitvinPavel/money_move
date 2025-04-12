@@ -403,8 +403,8 @@ private async getLastWorkDayBefore(
       // Находим актуальный оклад для этого месяца
       const salary = salariesResult.rows.find(
         (s) => new Date(s.effective_from) <= monthEnd
-      ) || latestSalary;
-      if (!salary) continue;
+      );
+      if (!salary && !latestSalary) continue;
   
       const workCalendar = await this.getWorkCalendar(monthStart);
       let monthHours = 0;
@@ -420,7 +420,7 @@ private async getLastWorkDayBefore(
       }
   
       if (monthHours > 0) {
-        totalEarnings += salary.base_salary;
+        totalEarnings += salary?.base_salary ?? latestSalary.base_salary;
         totalHours += monthHours;
       }
     }
