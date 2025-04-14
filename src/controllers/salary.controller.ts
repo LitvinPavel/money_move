@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { SalaryService } from '../services/salary.service';
+import { SalaryService } from '../services/salary/salary.service';
 
 export class SalaryController {
   private salaryService: SalaryService;
@@ -39,6 +39,27 @@ export class SalaryController {
       const result = await this.salaryService.calculateSalaryForMonth(
         userId,
         new Date(year, month - 1, 1)
+      );
+
+      res.json(result);
+    } catch (error) {
+      console.error('Calculate salary error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to calculate salary'
+      });
+    }
+  }
+
+  public calculateSalaryForPeriod = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new Error('Unauthorized');
+      const { startDate, endDate } = req.query;
+      if (!startDate && !endDate) throw new Error('Start date and End Date is required');
+      const result = await this.salaryService.calculateSalaryForPeriod(
+        userId,
+        new Date(startDate as string),
+        new Date(endDate as string)
       );
 
       res.json(result);

@@ -53,3 +53,15 @@ export interface ISalary {
     };
     total: number;
   }
+
+  export interface ISalaryPeriodCalculationResult {
+    periodStart: Date;
+    periodEnd: Date;
+    calculations: ISalaryCalculationResult[];
+    total: {
+      advance: number;
+      salary: number;
+      vacationPay: number;
+      overall: number;
+    };
+  }

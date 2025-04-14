@@ -14,7 +14,9 @@ router.use(authMiddleware);
 
 router.post("/", validate(salarySchemas.setSalary), salaryController.setSalary);
 
-router.get("/calculate", validateQuery(salarySchemas.calculateSalary), salaryController.calculateSalary);
+// router.get("/calculate", validateQuery(salarySchemas.calculateSalary), salaryController.calculateSalary);
+
+router.get("/calculate", validateQuery(salarySchemas.calculateSalaryForPeriod), salaryController.calculateSalaryForPeriod);
 
 router.post("/vacations", validate(salarySchemas.addVacation), salaryController.addVacation);
 

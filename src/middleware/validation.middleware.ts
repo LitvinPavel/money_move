@@ -181,6 +181,11 @@ export const salarySchemas = {
     year: Joi.number().positive().min(2000).required(),
   }),
 
+  calculateSalaryForPeriod: Joi.object({
+    startDate: Joi.string().isoDate().required(),
+    endDate: Joi.string().isoDate().required(),
+  }),
+
   addVacation: Joi.object({
     startDate: Joi.string().isoDate(),
     endDate: Joi.string().isoDate(),
