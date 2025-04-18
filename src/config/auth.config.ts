@@ -8,7 +8,7 @@ export const authConfig = {
     expiresIn: '7d'
   },
   cookie: {
-    httpOnly: true,
+    httpOnly: false,
     secure: true, // process.env.NODE_ENV === "production"
     sameSite: "none" as const,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 дней

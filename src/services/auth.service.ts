@@ -9,9 +9,7 @@ export class AuthService {
     userData: IUserCreate
   ): Promise<{ user: IUserPublic; tokens: ITokens }> {
     const existingUser = await UserModel.findByEmail(userData.email);
-    if (existingUser) {
-      throw new Error("Email already exists");
-    }
+    if (existingUser) throw new Error("Email already exists");
 
     const hashedPassword = await bcrypt.hash(userData.password, 10);
     const user = await UserModel.create({
@@ -32,14 +30,10 @@ export class AuthService {
     password: string
   ): Promise<{ user: IUserPublic; tokens: ITokens }> {
     const user = await UserModel.findByEmail(email);
-    if (!user) {
-      throw new Error("Invalid credentials");
-    }
+    if (!user) throw new Error("Invalid credentials");
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new Error("Invalid credentials");
-    }
+    if (!isPasswordValid) throw new Error("Invalid credentials");
 
     const tokens = TokenService.generateTokens({ userId: user.id });
 
@@ -50,12 +44,7 @@ export class AuthService {
   }
 
   static async refresh(refreshToken: string): Promise<ITokens> {
-    try {
-      const { userId } = TokenService.verifyRefreshToken(refreshToken);
-      
-      return TokenService.generateTokens({ userId });
-    } catch (error) {
-      throw new Error("Invalid refresh token");
-    }
+    const { userId } = TokenService.verifyRefreshToken(refreshToken);
+    return TokenService.generateTokens({ userId });
   }
 }
