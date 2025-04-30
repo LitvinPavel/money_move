@@ -583,17 +583,13 @@ export class TransactionService {
         // Корректируем баланс на основе транзакций за период
         if (balanceChange && balanceChange.balance_change) {
           account.balance = parseFloat(balanceChange.balance_change);
-          // Для периода считаем debt = 0, так как историю долга сложно отследить
-          account.debt = 0;
           account.net_balance = account.balance;
         } else {
           account.balance = 0;
-          account.debt = 0;
           account.net_balance = 0;
         }
       }
     }
-
     // Рассчитываем итоговые значения
     const totalBalance = parseFloat(accounts.reduce((sum, acc) => sum + acc.balance, 0));
     const totalDebt = parseFloat(accounts.reduce((sum, acc) => sum + acc.debt, 0));
